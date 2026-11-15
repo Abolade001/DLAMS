@@ -1,0 +1,1507 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DLAMS</title>
+<style>
+  :root { --bg:#f4f6f8; --ink:#1b2430; --muted:#5b6675; --line:#d3dae3; --accent:#1f6f5c; --accent-ink:#fff; --bad:#b3261e; --good:#1f6f3a; --card:#fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12171d; --ink:#e8edf2; --muted:#9aa6b5; --line:#2b3440; --accent:#4cb89c; --accent-ink:#0b1410; --bad:#ff8a80; --good:#7fd69a; --card:#1a2129; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:20px 16px 60px; }
+  h1 { font-size:1.6rem; margin:0 0 4px; letter-spacing:-0.01em; }
+  h2 { font-size:1.15rem; margin:28px 0 10px; }
+  p { margin:6px 0; }
+  .muted { color:var(--muted); font-size:.92rem; }
+  .panel { background:var(--card); border:1px solid var(--line); border-radius:6px; padding:16px; }
+  label { display:block; font-weight:600; margin:12px 0 4px; font-size:.95rem; }
+  input, select { width:100%; padding:10px; font:inherit; color:var(--ink); background:var(--bg); border:1px solid var(--line); border-radius:6px; }
+  input:focus-visible, select:focus-visible, button:focus-visible { outline:3px solid var(--accent); outline-offset:1px; }
+  button { font:inherit; font-weight:600; padding:10px 16px; border-radius:6px; border:1px solid var(--line); background:var(--card); color:var(--ink); cursor:pointer; }
+  button.danger { color:var(--bad); border-color:var(--bad); }
+  button.primary { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+  button:disabled { opacity:.6; cursor:wait; }
+  .bar { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+  .tabs { display:flex; gap:8px; margin:12px 0 4px; }
+  .tabs button[aria-pressed="true"] { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+  .line { display:grid; grid-template-columns:28px 1fr; gap:8px; padding:12px 0; border-top:1px solid var(--line); }
+  .line .no { font-weight:700; padding-top:10px; color:var(--muted); }
+  .fields { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .fields .wide { grid-column:1 / -1; }
+  .fields label { margin:0 0 2px; font-weight:500; font-size:.85rem; color:var(--muted); }
+  @media (max-width:520px) { .fields { grid-template-columns:1fr; } }
+  .actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+  .ok { color:var(--good); } .err { color:var(--bad); }
+  table { width:100%; border-collapse:collapse; font-size:.85rem; }
+  th, td { text-align:left; padding:5px 6px; border-top:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; }
+  .wrap { overflow-x:auto; }
+  details.dd { margin:14px 0; } details.dd > summary { font-size:1.12rem; font-weight:700; cursor:pointer; margin:6px 0 8px; list-style:revert; }
+  details.dd > summary::marker { color:var(--accent); }
+  button.danger { color:var(--bad); border-color:var(--bad); }
+  @media print { body * { visibility:hidden; } #regout, #regout * { visibility:visible; } #regout { position:absolute; left:0; top:0; width:100%; } }
+  td button { padding:4px 9px; font-size:.82rem; }
+  .qr { text-align:center; margin:12px 0; }
+  .qr img { width:min(320px,100%); height:auto; image-rendering:pixelated; background:#fff; padding:8px; border-radius:6px; }
+  .flag { font-size:.8rem; padding:2px 6px; border:1px solid var(--line); border-radius:4px; color:var(--muted); }
+  .sess { margin-top:14px; }
+  .check { display:flex; gap:8px; align-items:center; margin:6px 0; font-weight:400; }
+  .check input { width:auto; }
+  main.wide { max-width:1040px; }
+  [hidden] { display:none !important; }
+  .shell { display:grid; grid-template-columns:180px 1fr; gap:24px; margin-top:8px; }
+  .side { position:sticky; top:12px; align-self:start; display:flex; flex-direction:column; gap:4px; }
+  .side button { text-align:left; border:0; background:none; padding:9px 12px; border-radius:6px; }
+  .side button[aria-current="true"] { background:var(--accent); color:var(--accent-ink); }
+  @media (max-width:700px) { .shell { grid-template-columns:1fr; } .side { position:static; flex-direction:row; overflow-x:auto; } .side button { white-space:nowrap; } }
+  .rel { position:relative; } .pen { position:absolute; top:10px; right:10px; }
+  button.icon, td button.icon { padding:2px 9px; font-size:1.05rem; line-height:1.3; }
+  .kv { display:grid; grid-template-columns:140px 1fr; gap:6px 12px; margin:0; } .kv dt { color:var(--muted); } .kv dd { margin:0; }
+</style>
+</head>
+<body>
+<main id="app">Loading…</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script>
+/* ===== Put your two Supabase values between the quotes, then save the file ===== */
+const SUPABASE_URL = "https://ixruysckppyntpcmjnun.supabase.co";
+const SUPABASE_KEY = "sb_publishable_XbYBjAcFqvNhp7nlxoo1Aw_x7xn0Hlz";
+/* ================================================================================= */
+
+/* Heading lines printed at the top of the attendance register */
+const INSTITUTION = ["SIKIRU ADETONA COLLEGE OF EDUCATION, SCIENCE AND TECHNOLOGY, OMU-AJOSE, OGUN STATE",
+                     "(IN AFFILIATION WITH OLABISI ONABANJO UNIVERSITY, AGO-IWOYE)"];
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+// Same rule as the database: lower-case, runs of symbols become "-", then @dlams.app
+const loginEmail = s => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-") + "@dlams.app";
+const MODES = { degree: "Degree", nce_dual: "NCE / Dual Mandate" };
+const ROUTES = { utme: "UTME", direct_entry: "Direct Entry" };
+const AUDS = { all: "Everyone", utme: "UTME only", direct_entry: "Direct Entry only" };
+const modeLine = p => (MODES[p.study_mode] || "") + " - " + (ROUTES[p.admission_route] || "");
+
+let pendingToken = new URLSearchParams(location.search).get("s");
+let me = null;        // { prof, roles, cls }
+let tab = "student";
+let mode = "degree";
+let lines = [];
+const blank = () => ({ code: "", title: "", name: "", lid: "", aud: "all" });
+
+function show(html) { $("app").innerHTML = html; $("app").className = ""; }
+
+/* ---------- Sign in ---------- */
+function renderLogin(message) {
+  show(`
+    <h1>DLAMS</h1>
+    <p class="muted">Digital Lecture Attendance Management System</p>
+    ${pendingToken ? `<p><strong>Sign in to register your attendance.</strong></p>` : ""}
+    <form class="panel" style="margin-top:20px" onsubmit="doLogin(event)">
+      <label for="lid">Matric number or DLAMS ID</label>
+      <input id="lid" autocomplete="username" required>
+      <label for="pw">Password</label>
+      <input id="pw" type="password" autocomplete="current-password" required>
+      <div class="actions"><button class="primary" id="go">Sign in</button></div>
+      <p class="err" id="lerr" role="alert">${esc(message || "")}</p>
+    </form>
+    <p style="margin-top:16px">New student? <button type="button" onclick="renderRegister()">Register here</button></p>
+    <details style="margin-top:12px"><summary>Forgot password?</summary><p class="muted">Contact your HOC or the administrator to get a new password.</p></details>`);
+}
+
+async function doLogin(e) {
+  e.preventDefault();
+  $("go").disabled = true; $("lerr").textContent = "";
+  const { data: em } = await sb.rpc("login_email_for", { p_login: $("lid").value.trim() });
+  const { error } = await sb.auth.signInWithPassword({ email: em || loginEmail($("lid").value), password: $("pw").value });
+  if (error) { renderLogin("We could not sign you in. Check your ID and password and try again."); return; }
+  await loadMe();
+}
+
+async function signOut() { stopTimers(); await sb.auth.signOut(); me = null; renderLogin(); }
+
+/* ---------- Load the signed-in person ---------- */
+async function loadMe() {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) return renderLogin();
+  const { data: prof } = await sb.from("profiles").select("*").eq("id", user.id).maybeSingle();
+  if (!prof) { show(`<p>Your account has no DLAMS profile yet. Ask the administrator.</p><button onclick="signOut()">Sign out</button>`); return; }
+  if (prof.must_change_password) { renderChangePassword(); return; }
+  const { data: roles } = await sb.from("role_assignments").select("role,slot,class_profile_id").eq("profile_id", user.id).eq("is_active", true);
+  const hoc = (roles || []).find(r => r.role === "hoc_cg");
+  let cls = null;
+  if (hoc) { const r = await sb.from("class_profiles").select("*").eq("id", hoc.class_profile_id).maybeSingle(); cls = r.data; }
+  me = { prof, roles: roles || [], hoc, cls, staff: prof.account_type === "staff" };
+  tab = me.hoc ? "hoc" : "student";
+  lines = [blank()];
+  if (me.staff) { renderStaff(); return; }
+  pendingToken ? renderScan() : renderHome();
+}
+
+function renderHome() {
+  stopTimers();
+  const p = me.prof;
+  const tabs = me.hoc ? `<div class="tabs" role="group" aria-label="Switch dashboard">
+      <button aria-pressed="${tab === "student"}" onclick="setTab('student')">Student</button>
+      <button aria-pressed="${tab === "hoc"}" onclick="setTab('hoc')">${me.hoc.slot === "main" ? "HOC/CG" : "Assistant HOC/CG"}</button></div>` : "";
+  show(`
+    <div class="bar">
+      <div><h1>${esc(p.full_name)}</h1>
+        <p class="muted">${esc(p.login_id)}${me.hoc && p.hoc_cg_id ? " · " + (me.hoc.slot === "main" ? "HOC/CG" : "Assistant HOC/CG") + " ID " + esc(p.hoc_cg_id) : ""}</p></div>
+      <button onclick="signOut()">Sign out</button>
+    </div>${tabs}<div id="view"></div>`);
+  $("app").className = tab === "hoc" ? "wide" : "";
+  tab === "hoc" ? renderHoc() : renderStudent();
+  if (me.hoc) loadAppointedBy();
+}
+function setTab(t) { tab = t; renderHome(); }
+
+/* ---------- Student view ---------- */
+const semLabel = s => s === "first" ? "Harmattan Semester" : s === "second" ? "Rain Semester" : s;
+let flash = "", editingMe = false;
+async function renderStudent() {
+  const p = me.prof;
+  const { data: cls } = await sb.from("class_profiles").select("id,programme,level,session,semester,school_id").eq("is_active", true).order("level");
+  const mineCls = (cls || []).find(c => c.id === p.class_profile_id), sameSchool = (cls || []).filter(c => mineCls && c.school_id === mineCls.school_id);
+  let html = (flash ? `<p class="ok" role="status">${esc(flash)}</p>` : "") + `<h2>My courses</h2>`; flash = "";
+  if (p.status === "active") {
+    const { data } = await sb.rpc("my_courses");
+    const rows = data || [], KIND = { carryover: "Carryover", de_requirement: "Direct Entry requirement" };
+    html += rows.length ? `<div class="panel wrap"><table><tr><th>Code</th><th>Title</th><th>Lecturer</th><th></th></tr>${rows.map(c =>
+        `<tr><td>${esc(c.course_code)}</td><td>${esc(c.course_title)}</td><td>${esc(c.lecturer_name)}</td>
+         <td>${c.kind === "core" ? "" : `<span class="flag">${KIND[c.kind]}</span> <button onclick="dropExtra('${c.course_id}')">Remove</button>`}</td></tr>`).join("")}</table></div>`
+      : `<p class="panel">No courses have been added for your class yet.</p>`;
+    html += `<div class="panel" style="margin-top:12px"><strong>Extra courses</strong>
+      <p class="muted">Carryovers, and the lower-level courses a Direct Entry student must take. They are added straight away, and the HOC/CG who owns the course will see you on their list.</p>
+      <div class="actions"><button onclick="loadExtras()">Add an extra course</button></div><div id="xopts"></div></div>`;
+    html += `<h2>My attendance</h2><div id="myatt"></div>`;
+  } else {
+    html += `<p class="panel">${{ pending: "Your registration is waiting for approval from your class HOC/CG. You can correct your details below.",
+      denied: "Your registration was denied. Correct your details below and save to send it again.",
+      suspended: "Your account is suspended. Please contact your HOC/CG." }[p.status] || ""}</p>`;
+  }
+  const mine = (cls || []).find(c => c.id === p.class_profile_id);
+  const classOpts = sameSchool.map(c => `<option value="${c.id}" ${c.id === p.class_profile_id ? "selected" : ""}>${esc(c.programme)}, ${c.level} Level, ${esc(c.session)} ${semLabel(c.semester)}</option>`).join("");
+  html += `<h2>My account</h2><div class="panel rel">` + (editingMe ? `<div class="fields">
+      <div class="wide"><label for="sn">Full name</label><input id="sn" value="${esc(p.full_name)}"></div>
+      <div><label for="sm">Matric number</label><input id="sm" value="${esc(p.login_id)}"></div>
+      <div><label for="sp">Phone</label><input id="sp" type="tel" value="${esc(p.phone)}"></div>
+      <div><label for="sl">Current level</label><select id="sl">${[100, 200, 300, 400].map(l => `<option value="${l}" ${l === p.current_level ? "selected" : ""}>${l} Level</option>`).join("")}</select></div>
+      <div><label for="sk">Study mode</label><select id="sk">${Object.entries(MODES).map(([k, v]) => `<option value="${k}" ${k === p.study_mode ? "selected" : ""}>${v}</option>`).join("")}</select></div>
+      <div><label for="sr">How you were admitted</label><select id="sr">${Object.entries(ROUTES).map(([k, v]) => `<option value="${k}" ${k === p.admission_route ? "selected" : ""}>${v}</option>`).join("")}</select></div>
+      <div class="wide"><label for="sc">Department</label><select id="sc">${classOpts}</select></div>
+    </div>
+    <p class="muted">Changing your matric number, class, level or how you were admitted needs your HOC/CG to approve it again.</p>
+    <div class="actions"><button class="primary" id="sv" onclick="saveMe()">${p.status === "denied" ? "Save and resubmit" : "Save changes"}</button>
+      <button onclick="editMe(false)">Cancel</button></div><p id="smsg2" role="status"></p>`
+    : `<button class="icon pen" aria-label="Edit my details" title="Edit my details" onclick="editMe(true)">&#9998;</button>
+      <dl class="kv"><dt>Full name</dt><dd>${esc(p.full_name)}</dd><dt>Matric number</dt><dd>${esc(p.login_id)}</dd>
+      <dt>Phone</dt><dd>${esc(p.phone) || "-"}</dd><dt>Level</dt><dd>${p.current_level} Level</dd>
+      <dt>Study mode</dt><dd>${MODES[p.study_mode] || ""}</dd><dt>Admitted through</dt><dd>${ROUTES[p.admission_route] || ""}</dd>
+      <dt>Department</dt><dd>${mine ? esc(mine.programme) + ", " + mine.level + " Level, " + esc(mine.session) + " " + semLabel(mine.semester) : ""}</dd></dl>`) + `</div>
+    <details style="margin-top:16px"><summary>Delete my account</summary>
+      <p class="muted">This permanently removes your account and details. It is not possible once you have attendance records.</p>
+      <button onclick="deleteAccount()">Delete my account</button><p id="dmsg" role="status"></p></details>`;
+  $("view").innerHTML = html;
+  if (p.status === "active") loadMyAttendance();
+}
+
+function editMe(on) { editingMe = on; renderStudent(); }
+
+async function saveMe() {
+  const m = $("smsg2"), was = me.prof.status; $("sv").disabled = true; m.className = ""; m.textContent = "";
+  const { data, error } = await sb.rpc("update_my_profile", { p_name: $("sn").value, p_phone: $("sp").value,
+    p_class: $("sc").value, p_level: +$("sl").value, p_route: $("sr").value, p_mode: $("sk").value, p_login: $("sm").value });
+  if (error) { $("sv").disabled = false; m.className = "err"; m.textContent = error.message; return; }
+  const { data: np } = await sb.from("profiles").select("*").eq("id", me.prof.id).single(); me.prof = np;
+  flash = (data === "pending" && was !== "pending") ? "Saved. Your HOC/CG must approve the change." : "Saved.";
+  editingMe = false; renderHome();
+}
+
+async function loadExtras() {
+  const box = $("xopts"), { data, error } = await sb.rpc("extra_course_options");
+  if (error) { box.innerHTML = `<p class="err">${esc(error.message)}</p>`; return; }
+  box.innerHTML = (data && data.length) ? `<div class="wrap" style="margin-top:8px"><table><tr><th>Level</th><th>Code</th><th>Title</th><th>Lecturer</th><th></th></tr>${data.map(c =>
+    `<tr><td>${c.level}</td><td>${esc(c.course_code)}</td><td>${esc(c.course_title)}</td><td>${esc(c.lecturer_name)}</td>
+     <td><button class="primary" onclick="addExtra('${c.course_id}')">Add</button></td></tr>`).join("")}</table></div>`
+    : `<p class="muted">There are no lower-level courses available to add right now.</p>`;
+}
+async function addExtra(id) {
+  const { error } = await sb.rpc("add_extra_course", { p_course: id });
+  if (error) { $("xopts").insertAdjacentHTML("afterbegin", `<p class="err">${esc(error.message)}</p>`); return; }
+  flash = "Extra course added."; renderStudent();
+}
+async function dropExtra(id) {
+  if (!confirm("Remove this extra course from your list?")) return;
+  const { error } = await sb.rpc("drop_extra_course", { p_course: id }); if (!error) renderStudent();
+}
+
+async function deleteAccount() {
+  if (prompt("To delete your account, type DELETE") !== "DELETE") return;
+  const { error } = await sb.rpc("delete_my_account");
+  if (error) { $("dmsg").className = "err"; $("dmsg").textContent = error.message; return; }
+  await sb.auth.signOut(); me = null; renderLogin("Your account has been deleted.");
+}
+
+/* ---------- HOC/CG: Add courses ---------- */
+const isMain = () => (!!me && !!me.staff) || (!!me.hoc && (me.hoc.slot === "main" || me.roles.some(r => r.role === "admin")));
+let curSec = "attendance";
+function sec(n) {
+  curSec = n;
+  document.querySelectorAll("[id^='sec-']").forEach(e => { e.hidden = e.id !== "sec-" + n; });
+  document.querySelectorAll(".side button").forEach(b => b.setAttribute("aria-current", String(b.id === "nv-" + n)));
+}
+function renderHoc() {
+  const c = me.cls, main = isMain();
+  if (!main && curSec === "assistants") curSec = "attendance";
+  if (curSec === "admin" && !isAdmin()) curSec = "attendance";
+  $("view").innerHTML = `
+    ${me.hoc.slot !== "main" ? `<p class="panel">You are signed in as an <strong>Assistant HOC/CG</strong>. You can approve students and mark attendance. The HOC/CG handles courses and the QR code.</p>` : ""}
+    <div class="shell"><nav class="side" aria-label="HOC/CG menu">
+      <button id="nv-attendance" onclick="sec('attendance')">Attendance</button>
+      <button id="nv-students" onclick="sec('students')">Students</button>
+      <button id="nv-courses" onclick="sec('courses')">Courses</button>
+      ${main ? `<button id="nv-assistants" onclick="sec('assistants')">Assistants</button>` : ""}
+      <button id="nv-records" onclick="sec('records')">Records</button>
+      ${isAdmin() ? `<button id="nv-admin" onclick="sec('admin'); loadAdmin()">Administrator</button>` : ""}
+      ${isAdmin() ? `<button id="nv-inbox" onclick="sec('inbox'); loadInbox()">&#128276; Inbox <span id="inbcount"></span></button>` : ""}</nav>
+    <div>
+      <p class="muted" style="margin-top:0">${c ? esc(c.programme) + ", " + c.level + " Level, " + esc(c.session) + ", " + semLabel(c.semester) : ""}</p>
+      <section id="sec-attendance"><h2 style="margin-top:8px">Attendance sessions</h2>
+        ${main ? `<div id="screate"></div>` : ""}<p id="gmsg" role="status"></p><div id="slist"></div></section>
+      <section id="sec-students"><div id="sedit"></div><div id="pend"></div><div id="cls"></div><div id="xtra"></div><div id="dept"></div></section>
+      <section id="sec-courses">${main ? `<h2 style="margin-top:8px">Add courses</h2>
+        <div class="panel">
+          <label for="mode">Study mode</label>
+          <select id="mode" onchange="mode=this.value">
+            ${Object.entries(MODES).map(([k, v]) => `<option value="${k}" ${k === mode ? "selected" : ""}>${v}</option>`).join("")}
+          </select>
+          <div id="lines"></div>
+          <div class="actions"><button onclick="addLine()">+ Add another course</button>
+            <button class="primary" id="save" onclick="saveLines()">Save courses</button></div>
+          <p id="msg" role="status"></p>
+        </div>` : ""}
+        <div id="editbox"></div><h2>Courses in your class</h2><div id="saved"></div></section>
+      <section id="sec-assistants"><div id="asst"></div></section>
+      <section id="sec-records"><div id="rec"></div><div id="prt"></div></section>
+      <section id="sec-admin"><div id="adm"></div></section>
+      <section id="sec-inbox"><div id="inb"></div></section>
+    </div></div>`;
+  sec(curSec);
+  if (main) drawLines();
+  loadSaved(); loadPending(); startSessions(); loadRecords();
+  if (isAdmin()) loadInboxCount();
+  if (curSec === "admin") loadAdmin();
+}
+
+function drawLines() {
+  $("lines").innerHTML = lines.map((l, i) => `
+    <div class="line"><div class="no">${i + 1}</div>
+      <div class="fields">
+        <div><label for="c${i}">Course code</label><input id="c${i}" value="${esc(l.code)}" oninput="lines[${i}].code=this.value"></div>
+        <div><label for="t${i}">Course title</label><input id="t${i}" value="${esc(l.title)}" oninput="lines[${i}].title=this.value"></div>
+        <div><label for="n${i}">Course lecturer</label><input id="n${i}" value="${esc(l.name)}" oninput="lines[${i}].name=this.value"></div>
+        <div><label for="d${i}">Lecturer's DLAMS ID (optional)</label><input id="d${i}" value="${esc(l.lid)}" oninput="lines[${i}].lid=this.value" onchange="checkLecturer(${i})"></div>
+        <div><label for="a${i}">Who takes it?</label><select id="a${i}" onchange="lines[${i}].aud=this.value">${Object.entries(AUDS).map(([k, v]) => `<option value="${k}" ${k === l.aud ? "selected" : ""}>${v}</option>`).join("")}</select></div>
+        <div class="wide muted" id="k${i}" aria-live="polite"></div>
+      </div></div>`).join("");
+}
+
+function addLine() { lines.push(blank()); drawLines(); $("c" + (lines.length - 1)).focus(); }
+
+async function checkLecturer(i) {
+  const box = $("k" + i), id = lines[i].lid.trim();
+  if (!id) { box.textContent = ""; return; }
+  const { data, error } = await sb.rpc("lookup_lecturer", { p_id: id });
+  if (error) { box.innerHTML = `<span class="err">${esc(error.message)}</span>`; return; }
+  box.innerHTML = data ? `<span class="ok">Registered lecturer: ${esc(data)}. Check this is the right person.</span>`
+                       : `<span class="err">No active lecturer has this DLAMS ID.</span>`;
+}
+
+async function saveLines() {
+  const msg = $("msg"); msg.className = ""; msg.textContent = "";
+  const todo = lines.map((l, i) => [l, i]).filter(([l]) => l.code || l.title || l.name || l.lid);
+  if (!todo.length) { msg.className = "err"; msg.textContent = "Fill in at least one course line."; return; }
+  $("save").disabled = true;
+  const fails = [], notes = []; let ok = 0;
+  for (const [l, i] of todo) {
+    const { data: ad, error } = await sb.rpc("add_course", { p_class: me.hoc.class_profile_id, p_mode: mode, p_audience: l.aud || "all",
+      p_code: l.code, p_title: l.title, p_lecturer_name: l.name, p_lecturer_id: l.lid.trim() || null });
+    if (error) { fails.push("Line " + (i + 1) + ": " + error.message); continue; }
+    l.done = true; ok++;
+    if (ad && ad.lecturer_created) notes.push(`<strong>${esc(l.name)}</strong> - DLAMS ID <strong>${esc(ad.lecturer_id)}</strong>, temporary password <strong>${esc(ad.temp_password)}</strong>`);
+  }
+  lines = lines.filter(l => !l.done); if (!lines.length) lines = [blank()];
+  drawLines(); $("save").disabled = false;
+  msg.className = fails.length ? "err" : "ok";
+  msg.innerHTML = (ok ? `Saved ${ok} course${ok > 1 ? "s" : ""}. ` : "") + fails.map(esc).join("<br>");
+  if (notes.length) {
+    const box = document.createElement("div"); box.className = "panel"; box.style.marginTop = "10px";
+    box.innerHTML = `<p class="err"><strong>Strict warning:</strong> give these to the lecturer only, in person. Do not share them with anyone else. The lecturer must choose a new password at first sign-in.</p>` + notes.map(n => `<p>${n}</p>`).join("");
+    msg.after(box);
+  }
+  loadSaved();
+}
+
+async function loadSaved() {
+  const { data } = await sb.from("courses").select("*").eq("class_profile_id", me.hoc.class_profile_id).order("course_code");
+  saved = data || [];
+  const m = isMain();
+  drawCreate(); drawPrint();
+  if (!saved.length) { $("saved").innerHTML = `<p class="panel">No courses added yet. Use the form above.</p>`; return; }
+  $("saved").innerHTML = Object.entries(MODES).map(([k, label]) => {
+    const rows = saved.filter(c => c.study_mode === k);
+    if (!rows.length) return "";
+    return `<div class="panel wrap" style="margin-bottom:12px"><strong>${label}</strong>
+      <table><tr><th>Code</th><th>Title</th><th>Lecturer</th><th>For</th><th>Linked</th>${m ? "<th></th>" : ""}</tr>${rows.map(c =>
+        `<tr><td>${esc(c.course_code)}</td><td>${esc(c.course_title)}</td><td>${esc(c.lecturer_name)}</td>
+         <td>${AUDS[c.audience] || ""}</td><td>${c.lecturer_profile_id ? "Yes" : "Name only"}</td>
+         ${m ? `<td style="white-space:nowrap"><button class="icon" aria-label="Edit course" title="Edit" onclick="editCourse('${c.id}')">&#9998;</button>
+         <button onclick="removeCourse('${c.id}')">Remove</button></td>` : ""}</tr>`).join("")}</table></div>`;
+  }).join("");
+}
+
+function editCourse(id) {
+  const c = saved.find(x => x.id === id); if (!c) return;
+  $("editbox").innerHTML = `<div class="panel" style="margin-top:20px"><strong>Edit ${esc(c.course_code)}</strong>
+    <span class="muted"> (${MODES[c.study_mode]})</span>
+    <div class="fields" style="margin-top:8px">
+      <div><label for="ec">Course code</label><input id="ec" value="${esc(c.course_code)}"></div>
+      <div><label for="et">Course title</label><input id="et" value="${esc(c.course_title)}"></div>
+      <div><label for="en">Course lecturer</label><input id="en" value="${esc(c.lecturer_name)}"></div>
+      <div><label for="ed">Lecturer's DLAMS ID</label><input id="ed" placeholder="${c.lecturer_profile_id ? "Leave blank to keep the current link" : "Optional"}"></div>
+      <div><label for="ea">Who takes it?</label><select id="ea">${Object.entries(AUDS).map(([k, v]) => `<option value="${k}" ${k === c.audience ? "selected" : ""}>${v}</option>`).join("")}</select></div>
+      ${c.lecturer_profile_id ? `<div class="wide"><label><input type="checkbox" id="eu" style="width:auto"> Remove the link to the lecturer's account</label></div>` : ""}
+    </div>
+    <div class="actions"><button class="primary" id="es" onclick="saveEdit('${c.id}')">Save changes</button>
+      <button onclick="$('editbox').innerHTML=''">Cancel</button></div>
+    <p id="em" role="status"></p></div>`;
+  $("ec").focus();
+}
+
+async function saveEdit(id) {
+  $("es").disabled = true;
+  const { error } = await sb.rpc("update_course", {
+    p_course: id, p_code: $("ec").value, p_title: $("et").value, p_lecturer_name: $("en").value,
+    p_lecturer_id: $("ed").value.trim() || null, p_unlink: !!($("eu") && $("eu").checked) });
+  const old = saved.find(x => x.id === id);
+  const e2 = (!error && old && $("ea").value !== old.audience) ? (await sb.rpc("set_course_audience", { p_course: id, p_audience: $("ea").value })).error : null;
+  if (error || e2) { $("es").disabled = false; $("em").className = "err"; $("em").textContent = (error || e2).message; return; }
+  const nmNow = $("en").value.trim(), idNow = $("ed").value.trim();
+  if (old && (old.lecturer_name !== nmNow || !old.lecturer_profile_id || idNow)) {
+    const { data: as, error: ae } = await sb.rpc("assign_course_lecturer", { p_course: id, p_name: nmNow, p_login: idNow || null });
+    if (ae) { $("es").disabled = false; $("em").className = "err"; $("em").textContent = ae.message; return; }
+    if (as && as.temp_password) flashMsg("A lecturer account was created.\nDLAMS ID: " + as.lecturer_id + "\nTemporary password: " + as.temp_password + "\n\nGive this only to the lecturer. They must change the password at first sign-in.");
+  }
+  $("editbox").innerHTML = ""; $("msg").className = "ok"; $("msg").textContent = "Course updated.";
+  loadSaved();
+}
+
+async function removeCourse(id) {
+  const c = saved.find(x => x.id === id); if (!c) return;
+  if (!confirm("Remove " + c.course_code + " (" + c.course_title + ")? This cannot be undone.")) return;
+  let { error } = await sb.rpc("remove_course", { p_course: id });
+  if (error && /attendance sessions/.test(error.message) && isAdmin()) {
+    if (prompt("This course has lecture records. Deleting it will ALSO delete all of its attendance records for good.\n\nType the course code (" + c.course_code + ") to confirm:") !== c.course_code) { loadSaved(); return; }
+    ({ error } = await sb.rpc("remove_course_force", { p_course: id }));
+  }
+  $("msg").className = error ? "err" : "ok";
+  $("msg").textContent = error ? error.message : c.course_code + " was removed.";
+  loadSaved();
+}
+
+
+/* ---------- Student registration ---------- */
+async function renderRegister(msg) {
+  const [sc, dp, se] = await Promise.all([
+    sb.from("schools").select("id,name").order("name"),
+    sb.from("departments").select("id,name,school_id").not("school_id", "is", null).order("name"),
+    sb.from("academic_sessions").select("label").order("label", { ascending: false })]);
+  const R = window._reg = { schools: sc.data || [], depts: dp.data || [], sessions: (se.data || []).map(x => x.label), sel: {} };
+  R.sel.school = (R.schools[0] || {}).id || ""; R.sel.sess = R.sessions[0] || ""; R.sel.level = 100; R.sel.sem = "first";
+  show(`<h1>Register</h1>
+    <p class="muted">Create your DLAMS account. Your HOC/CG will approve it. Choose your school, department, session, level and semester.</p>
+    <form class="panel" style="margin-top:20px" onsubmit="doRegister(event)">
+      <label for="rid">Matric number</label><input id="rid" autocomplete="username" required>
+      <label for="rname">Full name</label><input id="rname" autocomplete="name" required>
+      <label for="rphone">Phone number</label><input id="rphone" type="tel" autocomplete="tel">
+      <label for="rschool">School</label><select id="rschool" onchange="regPick('school', this.value)"></select>
+      <label for="rdept">Department</label><select id="rdept" onchange="regPick('dept', this.value)"></select>
+      <label for="rsess">Session</label><select id="rsess" onchange="regPick('sess', this.value)"></select>
+      <label for="rlevel">Level</label><select id="rlevel" onchange="regPick('level', this.value)"></select>
+      <label for="rsem">Semester</label><select id="rsem" onchange="regPick('sem', this.value)"></select>
+      <label for="rmode">Study mode</label>
+      <select id="rmode">${Object.entries(MODES).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select>
+      <label for="rroute">How you were admitted</label>
+      <select id="rroute">${Object.entries(ROUTES).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select>
+      <label for="rpw">Choose a password</label><input id="rpw" type="password" autocomplete="new-password" required>
+      <label for="rpw2">Type the password again</label><input id="rpw2" type="password" autocomplete="new-password" required>
+      <div class="actions"><button class="primary" id="rgo">Create my account</button></div>
+      <p class="err" id="rerr" role="alert">${esc(msg || "")}</p>
+    </form>
+    <p><button onclick="renderLogin()">Back to sign in</button></p>`);
+  regPick("school", R.sel.school);
+}
+
+/* Each choice narrows the next; the first valid option is picked automatically */
+function regPick(level, val) {
+  const R = window._reg, S = R.sel;
+  const o = (a, f) => a.length ? a.map(f).join("") : `<option value="">None available yet</option>`;
+  if (level === "school") S.school = val;
+  if (level === "dept") S.dept = val;
+  if (level === "sess") S.sess = val;
+  if (level === "level") S.level = +val;
+  if (level === "sem") S.sem = val;
+  const depts = R.depts.filter(d => d.school_id === S.school);
+  if (!depts.some(d => d.id === S.dept)) S.dept = depts.length ? depts[0].id : "";
+  $("rschool").innerHTML = o(R.schools, s => `<option value="${s.id}" ${s.id === S.school ? "selected" : ""}>${esc(s.name)}</option>`);
+  $("rdept").innerHTML = o(depts, d => `<option value="${d.id}" ${d.id === S.dept ? "selected" : ""}>${esc(d.name)}</option>`);
+  $("rsess").innerHTML = o(R.sessions, x => `<option value="${x}" ${x === S.sess ? "selected" : ""}>${x}</option>`);
+  $("rlevel").innerHTML = [100, 200, 300, 400].map(l => `<option value="${l}" ${l === S.level ? "selected" : ""}>${l} Level</option>`).join("");
+  $("rsem").innerHTML = `<option value="first" ${S.sem === "first" ? "selected" : ""}>Harmattan Semester</option><option value="second" ${S.sem === "second" ? "selected" : ""}>Rain Semester</option>`;
+}
+
+async function doRegister(e) {
+  e.preventDefault();
+  const fail = m => { $("rerr").textContent = m; $("rgo").disabled = false; };
+  const id = $("rid").value.trim().toUpperCase(), pw = $("rpw").value, S = window._reg.sel;
+  if (pw !== $("rpw2").value) return fail("The two passwords do not match.");
+  if (pw.length < 6) return fail("Use a password of at least 6 characters.");
+  if (!S.dept) return fail("Choose your department. If none is listed for this school, ask the administrator.");
+  $("rgo").disabled = true; $("rerr").textContent = "";
+  const email = loginEmail(id).replace("@", "." + Math.random().toString(36).slice(2, 8) + "@");
+  const { data, error } = await sb.auth.signUp({ email, password: pw });
+  if (error) return fail("Your account could not be created: " + error.message);
+  if (!data.session) return fail("Sign-up needs 'Confirm email' to be switched off in Supabase.");
+  const { data: cid, error: ce } = await sb.rpc("ensure_class_profile", { p_dept: S.dept, p_level: S.level, p_session: S.sess, p_sem: S.sem });
+  if (ce) { await sb.auth.signOut(); return fail(ce.message); }
+  const { error: pe } = await sb.from("profiles").insert({
+    id: data.user.id, auth_email: email, login_id: id, account_type: "student", full_name: $("rname").value.trim(),
+    phone: $("rphone").value.trim() || null, department_id: S.dept, class_profile_id: cid,
+    admission_route: $("rroute").value, study_mode: $("rmode").value, current_level: S.level, status: "pending" });
+  if (pe) { await sb.auth.signOut(); return fail(/duplicate|unique/i.test(pe.message) ? "This matric number is already registered. Sign in instead, or ask your HOC/CG." : "Your details could not be saved: " + pe.message); }
+  await loadMe();
+}
+
+/* ---------- HOC/CG and assistants: approvals, assistants, department list ---------- */
+let people = [], deptList = [];
+async function loadPending() {
+  const cid = me.hoc.class_profile_id;
+  const { data } = await sb.from("profiles")
+    .select("id,login_id,full_name,phone,admission_route,study_mode,current_level,status,hoc_cg_id,status_reason,status_note")
+    .eq("class_profile_id", cid).eq("account_type", "student").order("full_name");
+  people = (data || []).sort((a, b) => cmpNo(a.login_id, b.login_id));
+  const pend = people.filter(p => p.status === "pending"), act = people.filter(p => p.status === "active"), den = people.filter(p => p.status === "denied");
+  $("pend").innerHTML = `<h2>Student approvals${pend.length ? " (" + pend.length + ")" : ""}</h2>` + (pend.length
+    ? `<div class="panel wrap"><table><tr><th>Name</th><th>Matric</th><th>Mode</th><th>Level</th><th>Phone</th><th></th></tr>${pend.map(p =>
+        `<tr><td>${esc(p.full_name)}</td><td>${esc(p.login_id)}</td><td>${modeLine(p)}</td><td>${p.current_level || ""}</td><td>${esc(p.phone)}</td>
+         <td style="white-space:nowrap"><button class="icon" aria-label="Edit student" title="Edit" onclick="editStudent('${p.id}')">&#9998;</button> <button onclick="denyStudent('${p.id}')">Deny</button>
+         <button class="primary" onclick="approve('${p.id}')">Approve</button></td></tr>`).join("")}</table>
+       <div class="actions"><button class="primary" onclick="approveAll()">Approve all ${pend.length}</button></div></div>`
+    : `<p class="panel">No students are waiting for approval.</p>`)
+    + `<p class="muted" id="pmsg" role="status">${act.length} approved student${act.length === 1 ? "" : "s"} in your class${den.length ? ", " + den.length + " denied" : ""}.</p>`;
+  const nv = $("nv-students"); if (nv) nv.textContent = "Students" + (pend.length ? " (" + pend.length + ")" : "");
+  drawClass(); loadExtraStudents(); loadAsst();
+}
+
+const pmsg = (ok, t) => { const el = $("pmsg"); if (el) { el.className = ok ? "muted" : "err"; el.textContent = t; } };
+async function approve(id) {
+  const { error } = await sb.rpc("approve_student", { p_student: id });
+  await loadPending(); if (error) pmsg(false, error.message);
+}
+/* Lists are in serial order: the last three digits of the matric or DLAMS ID (EDUC2410002 -> 002) */
+const serialNo = id => { const d = String(id || "").replace(/\D/g, "").slice(-3); return d ? parseInt(d, 10) : 1e9; };
+const cmpNo = (a, b) => (serialNo(a) - serialNo(b)) || String(a).localeCompare(String(b));
+
+/* Reasons for denying and removing students. The administrator and HOC/CG choose one; "other" needs a sentence. */
+const DENY_REASONS = { incomplete: "Incomplete registration", wrong_details: "Wrong details", not_eligible: "Not eligible for this department", other: "Other" };
+const REMOVE_REASONS = { withdrew: "Withdrew from the programme", transferred: "Transferred to another institution", duplicate: "Duplicate account", wrong_registration: "Registered in error", other: "Other" };
+const ALL_REASONS = Object.assign({}, DENY_REASONS, REMOVE_REASONS);
+function pickReason(map, verb) {
+  const keys = Object.keys(map);
+  const n = prompt(verb + " because:\n" + keys.map((k, i) => (i + 1) + ". " + map[k]).join("\n") + "\n\nType the number of the reason:");
+  const key = keys[(+n) - 1];
+  if (!key) return null;
+  let note = null;
+  if (key === "other") { note = prompt("Describe the reason in a sentence:"); if (!note || !note.trim()) return null; }
+  return { key, note };
+}
+
+async function denyStudent(id) {
+  const p = people.find(x => x.id === id);
+  const rs = pickReason(DENY_REASONS, "Deny the registration of " + (p ? p.full_name : "this student"));
+  if (!rs) return;
+  const { error } = await sb.rpc("deny_student", { p_student: id, p_reason: rs.key, p_note: rs.note });
+  await loadPending(); if (error) pmsg(false, error.message);
+}
+async function approveAll() {
+  const fails = [];
+  for (const p of people.filter(x => x.status === "pending")) {
+    const { error } = await sb.rpc("approve_student", { p_student: p.id });
+    if (error) fails.push(p.full_name + ": " + error.message);
+  }
+  await loadPending(); if (fails.length) pmsg(false, fails.join(" | "));
+}
+
+function editStudent(id) {
+  const p = people.find(x => x.id === id); if (!p) return;
+  $("sedit").innerHTML = `<div class="panel" style="margin-top:12px"><strong>Edit ${esc(p.full_name)}</strong> <span class="muted">(${esc(p.login_id)})</span>
+    <div class="fields" style="margin-top:8px">
+      <div class="wide"><label for="en2">Full name</label><input id="en2" value="${esc(p.full_name)}"></div>
+      <div><label for="ei2">Matric number</label><input id="ei2" value="${esc(p.login_id)}"></div>
+      <div><label for="ep2">Phone</label><input id="ep2" type="tel" value="${esc(p.phone)}"></div>
+      <div><label for="el2">Level</label><select id="el2">${[100, 200, 300, 400].map(l => `<option value="${l}" ${l === p.current_level ? "selected" : ""}>${l} Level</option>`).join("")}</select></div>
+      <div><label for="ek2">Study mode</label><select id="ek2">${Object.entries(MODES).map(([k, v]) => `<option value="${k}" ${k === p.study_mode ? "selected" : ""}>${v}</option>`).join("")}</select></div>
+      <div><label for="er2">Admitted through</label><select id="er2">${Object.entries(ROUTES).map(([k, v]) => `<option value="${k}" ${k === p.admission_route ? "selected" : ""}>${v}</option>`).join("")}</select></div>
+    </div>
+    <div class="actions"><button class="primary" onclick="saveStudent('${id}')">Save</button><button onclick="$('sedit').innerHTML=''">Cancel</button>${isMain() ? `<button onclick="resetPw('${id}')">Reset password</button>` : ""}</div>
+    <p id="em2" role="status"></p></div>`;
+  $("en2").focus();
+}
+async function saveStudent(id) {
+  const { error } = await sb.rpc("edit_student", { p_student: id, p_name: $("en2").value, p_phone: $("ep2").value,
+    p_level: +$("el2").value, p_route: $("er2").value, p_mode: $("ek2").value, p_login: $("ei2").value });
+  if (error) { $("em2").className = "err"; $("em2").textContent = error.message; return; }
+  $("sedit").innerHTML = ""; loadPending();
+}
+
+async function loadExtraStudents() {
+  const el = $("xtra"); if (!el) return;
+  const { data } = await sb.rpc("class_extras", { p_class: me.hoc.class_profile_id }), rows = data || [];
+  el.innerHTML = `<h2>Extra students (${rows.length})</h2>` + (rows.length
+    ? `<div class="panel wrap"><p class="muted" style="margin-top:0">Students from other levels who added your courses.</p><table><tr><th>Course</th><th>Name</th><th>Matric</th><th>Level</th><th>Type</th><th></th></tr>${rows.map(r =>
+        `<tr><td>${esc(r.course_code)}</td><td>${esc(r.full_name)}</td><td>${esc(r.login_id)}</td><td>${r.current_level || ""}</td>
+         <td>${r.kind === "de_requirement" ? "Direct Entry requirement" : "Carryover"}</td>
+         <td><button onclick="removeExtra('${r.course_id}','${r.student_id}')">Remove</button></td></tr>`).join("")}</table></div>`
+    : `<p class="panel">No students from other levels have added your courses.</p>`);
+}
+async function removeExtra(cid, sid) {
+  if (!confirm("Remove this student from the course?")) return;
+  const { error } = await sb.rpc("remove_extra_student", { p_course: cid, p_student: sid });
+  await loadExtraStudents(); if (error) pmsg(false, error.message);
+}
+
+function drawClass() {
+  if (!$("cls")) return;
+  if (!$("cq")) $("cls").innerHTML = `<h2 id="ch"></h2><div class="panel"><input id="cq" placeholder="Search by name or matric number" aria-label="Search your class" oninput="drawClassList()">
+    <div id="clist" class="wrap" style="margin-top:10px"></div></div><div id="rlist" style="margin-top:12px"></div>`;
+  drawClassList();
+}
+function drawClassList() {
+  const q = $("cq").value.trim().toLowerCase();
+  const act = people.filter(p => p.status === "active"), rem = people.filter(p => p.status === "suspended"), den = people.filter(p => p.status === "denied");
+  $("ch").textContent = "Approved students in your class (" + act.length + ")";
+  const rows = act.filter(p => !q || p.full_name.toLowerCase().includes(q) || p.login_id.toLowerCase().includes(q));
+  $("clist").innerHTML = rows.length ? `<table><tr><th>Name</th><th>Matric</th><th>Level</th><th>Mode</th><th></th></tr>${rows.map(p =>
+    `<tr><td>${esc(p.full_name)}</td><td>${esc(p.login_id)}</td><td>${p.current_level || ""}</td><td>${MODES[p.study_mode] || ""}</td>
+     <td style="white-space:nowrap"><button class="icon" aria-label="Edit student" title="Edit" onclick="editStudent('${p.id}')">&#9998;</button>
+     <button onclick="removeStudent('${p.id}')">Remove</button></td></tr>`).join("")}</table>` : `<p class="muted">No students found.</p>`;
+  const plain = (p, btns) => `<tr><td>${esc(p.full_name)}<br><span class="muted">${esc(ALL_REASONS[p.status_reason] || "")}${p.status_note ? " - " + esc(p.status_note) : ""}</span></td><td>${esc(p.login_id)}</td><td style="text-align:right;white-space:nowrap">${btns}</td></tr>`;
+  $("rlist").innerHTML =
+    (rem.length ? `<details class="dd"><summary>Removed students (${rem.length})</summary><div class="panel wrap"><table>${rem.map(p =>
+      plain(p, `<button onclick="restoreStudent('${p.id}')">Restore</button> <button class="danger" onclick="deleteRecord('${p.id}')">Delete record</button>`)).join("")}</table></div></details>` : "")
+    + (den.length ? `<details class="dd"><summary>Denied registrations (${den.length})</summary><div class="panel wrap"><table>${den.map(p =>
+      plain(p, `<button class="icon" aria-label="Edit student" title="Edit" onclick="editStudent('${p.id}')">&#9998;</button> <button class="primary" onclick="approveAny('${p.id}')">Approve</button> <button class="danger" onclick="deleteRecord('${p.id}')">Delete record</button>`)).join("")}</table></div></details>` : "");
+}
+async function deleteRecord(id) {
+  const p = people.find(x => x.id === id) || (window._adm && window._adm.students || []).find(x => x.id === id);
+  if (!confirm("Delete the record of " + (p ? p.full_name : "this student") + " permanently? The account is removed and this cannot be undone.")) return;
+  const { error } = await sb.rpc("delete_student_record", { p_student: id });
+  if (error) { flashMsg(error.message); return; }
+  if (me.hoc) loadPending();
+  if (isAdmin()) loadAdmin();
+}
+
+async function removeStudent(id) {
+  const p = people.find(x => x.id === id);
+  const rs = pickReason(REMOVE_REASONS, "Remove " + (p ? p.full_name : "this student") + " from your class. Their past attendance is kept");
+  if (!rs) return;
+  const { error } = await sb.rpc("remove_student", { p_student: id, p_reason: rs.key, p_note: rs.note });
+  await loadPending(); if (error) pmsg(false, error.message);
+}
+async function restoreStudent(id) {
+  const { error } = await sb.rpc("restore_student", { p_student: id });
+  await loadPending(); if (error) pmsg(false, error.message);
+}
+
+async function loadAsst() {
+  if (!isMain()) { $("asst").innerHTML = ""; return; }
+  const cid = me.hoc.class_profile_id;
+  const { data } = await sb.from("role_assignments").select("profile_id,slot").eq("role", "hoc_cg").eq("class_profile_id", cid).eq("is_active", true);
+  const ass = (data || []).filter(x => x.slot === "assistant"), taken = new Set((data || []).map(x => x.profile_id));
+  const choices = people.filter(p => p.status === "active" && !taken.has(p.id));
+  const nm = id => { const p = people.find(x => x.id === id); return p ? esc(p.full_name) + " (" + esc(p.hoc_cg_id) + ")" : "Assistant"; };
+  $("asst").innerHTML = `<h2>Assistants (${ass.length} of 5)</h2>` + (ass.length
+    ? `<div class="panel wrap"><table>${ass.map(a => `<tr><td>${nm(a.profile_id)}</td><td style="text-align:right"><button onclick="removeAssistant('${a.profile_id}')">Remove</button></td></tr>`).join("")}</table></div>`
+    : `<p class="panel">You have no assistants yet.</p>`)
+    + (ass.length >= 5 ? `<p class="muted">You have 5 assistants. Remove one to add another.</p>`
+      : choices.length ? `<div class="panel" style="margin-top:12px"><label for="asel">Add an assistant from your approved students</label>
+         <select id="asel">${choices.map(p => `<option value="${p.id}">${esc(p.full_name)} (${esc(p.login_id)})</option>`).join("")}</select>
+         <div class="actions"><button class="primary" onclick="addAssistant()">Add assistant</button></div></div>`
+        : `<p class="muted">Approve students first, then you can choose assistants.</p>`)
+    + `<p id="amsg" role="status"></p>`;
+}
+async function addAssistant() {
+  const { error } = await sb.rpc("add_assistant", { p_student: $("asel").value });
+  if (error) { $("amsg").className = "err"; $("amsg").textContent = error.message; return; }
+  loadPending();
+}
+async function removeAssistant(pid) {
+  if (!confirm("Remove this assistant? You can add another person afterwards.")) return;
+  const { error } = await sb.rpc("remove_assistant", { p_profile: pid, p_class: me.hoc.class_profile_id });
+  if (error) { $("amsg").className = "err"; $("amsg").textContent = error.message; return; }
+  loadPending();
+}
+
+async function loadDept() {
+  const did = me.prof.department_id; if (!did) { $("dept").innerHTML = ""; return; }
+  const { data } = await sb.from("profiles").select("full_name,login_id,current_level,admission_route,study_mode")
+    .eq("department_id", did).eq("account_type", "student").eq("status", "active").order("current_level").order("full_name");
+  deptList = data || [];
+  $("dept").innerHTML = `<h2>Approved students in your department (${deptList.length})</h2><div class="panel">
+    <input id="dq" placeholder="Search by name or matric number" aria-label="Search students" oninput="drawDept()"><div id="dlist" class="wrap" style="margin-top:10px"></div></div>`;
+  drawDept();
+}
+function drawDept() {
+  const q = ($("dq") ? $("dq").value : "").trim().toLowerCase();
+  const rows = deptList.filter(p => !q || p.full_name.toLowerCase().includes(q) || p.login_id.toLowerCase().includes(q));
+  $("dlist").innerHTML = rows.length ? `<table><tr><th>Name</th><th>Matric</th><th>Level</th><th>Mode</th></tr>${rows.map(p =>
+    `<tr><td>${esc(p.full_name)}</td><td>${esc(p.login_id)}</td><td>${p.current_level || ""}</td><td>${modeLine(p)}</td></tr>`).join("")}</table>`
+    : `<p class="muted">No students found.</p>`;
+}
+
+/* ---------- Print the attendance record for a course ---------- */
+function drawPrint() {
+  const el = $("prt"); if (!el) return;
+  el.innerHTML = saved.length ? `<h2>Print attendance record</h2><div class="panel"><label for="pcourse">Course</label>
+    <select id="pcourse">${saved.map(c => `<option value="${c.id}">${esc(c.course_code)} - ${esc(c.course_title)} (${MODES[c.study_mode]})</option>`).join("")}</select>
+    <div class="actions"><button class="primary" onclick="printSheet()">Print attendance sheet</button></div><p id="pmsg2" role="status"></p></div>` : "";
+}
+const ord = n => { const v = n % 100; return n + ((v >= 11 && v <= 13) ? "TH" : (["TH", "ST", "ND", "RD"][n % 10] || "TH")); };
+async function printSheet() {
+  const m = $("pmsg2"); m.className = ""; m.textContent = "";
+  const c = saved.find(x => x.id === $("pcourse").value); if (!c) return;
+  const { data: ss } = await sb.from("sessions").select("id,created_at").eq("course_id", c.id).eq("status", "finalised").order("created_at");
+  const lect = ss || []; let got = new Map();
+  if (lect.length) {
+    const { data: at } = await sb.from("attendance").select("session_id,student_id,method").in("session_id", lect.map(x => x.id)).eq("status", "present");
+    got = new Map((at || []).map(a => [a.session_id + a.student_id, a.method]));
+  }
+  const { data: dep } = await sb.from("departments").select("name").eq("id", me.prof.department_id).maybeSingle();
+  // Order by the serial number at the end of the matric number (EDUC2410002 -> 2)
+  const serial = id => { const x = String(id).match(/(\d{3})$/) || String(id).match(/(\d+)$/); return x ? parseInt(x[1], 10) : 1e9; };
+  const { data: ro, error: re } = await sb.rpc("course_roster", { p_course: c.id });
+  if (re) { m.className = "err"; m.textContent = re.message; return; }
+  const bySerial = (a, b) => serial(a.login_id) - serial(b.login_id) || a.login_id.localeCompare(b.login_id);
+  const studs = (ro || []).filter(r => r.kind === "core").sort(bySerial), extras = (ro || []).filter(r => r.kind !== "core").sort(bySerial);
+  const cols = Math.max(10, lect.length), aw = (34 / cols).toFixed(2), cl = me.cls;
+  const head = `<thead><tr><th rowspan="2" style="width:4%">S/N</th><th rowspan="2" style="width:21%">NAME</th><th rowspan="2" style="width:11%">MATRIC NO</th>
+    <th colspan="${cols}">ATTENDANCE</th><th colspan="3">C.A</th><th rowspan="2" style="width:4.5%">TOTAL C.A</th><th rowspan="2" style="width:4.5%">EXAM</th><th rowspan="2">REMARK</th></tr>
+    <tr>${Array.from({ length: cols }, (_, i) => `<th style="width:${aw}%">${ord(i + 1)}</th>`).join("")}<th style="width:3%">1ST</th><th style="width:3%">2ND</th><th style="width:3%">3RD</th></tr></thead>`;
+  const rowHtml = (p, i, note) => `<tr><td class="c">${serial(p.login_id) < 1e9 ? serial(p.login_id) : i + 1}</td><td>${esc(p.full_name)}</td><td>${esc(p.login_id)}</td>${
+    Array.from({ length: cols }, (_, k) => { const v = lect[k] && got.get(lect[k].id + p.student_id); return `<td class="c">${v ? (v === "assisted" ? "&#10003;*" : "&#10003;") : ""}</td>`; }).join("")}<td></td><td></td><td></td><td></td><td></td><td>${note || ""}</td></tr>`;
+  const mk = (arr, note, last) => { const ch = []; for (let i = 0; i < arr.length; i += 20) ch.push(arr.slice(i, i + 20));
+    return ch.map((part, k) => `<table class="${(k < ch.length - 1 || !last) ? "brk" : ""}">${head}<tbody>${part.map((p, i) => rowHtml(p, k * 20 + i, note(p))).join("")}</tbody></table>`).join(""); };
+  let tables = mk(studs, () => "", !extras.length) || `<table>${head}<tbody></tbody></table>`;
+  if (extras.length) tables += `<div class="sub"><b>EXTRA REGISTRATIONS &mdash; CARRYOVER AND DIRECT ENTRY REQUIREMENT</b></div>`
+    + mk(extras, r => r.kind === "de_requirement" ? "Direct Entry req." : "Carryover", true);
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Attendance - ${esc(c.course_code)}</title><style>
+    @page{size:A4 landscape;margin:8mm} *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{font:9px Arial,sans-serif;color:#000;margin:0}
+    .hd{text-align:center;font-size:11px;line-height:1.45;margin-bottom:4px} .sub{font-size:9.5px;margin:4px 0 6px;text-align:center}
+    table{border-collapse:collapse;width:100%;table-layout:fixed;margin-bottom:6px}
+    th,td{border:1px solid #000;padding:2px 3px;height:17px;word-wrap:break-word} th{background:#bdd7ee;text-align:center;font-size:8px} td.c{text-align:center}
+    .brk{page-break-after:always} .note{font-size:8.5px;margin-top:6px}
+    .sig{display:flex;gap:40px;margin-top:34px;font-size:10px;page-break-inside:avoid}
+    tr{page-break-inside:avoid} table{page-break-inside:auto} .sig div{flex:1;border-top:1px solid #000;padding-top:4px;text-align:center}
+    </style></head><body>
+    <div class="hd"><b>${INSTITUTION[0]}</b><br>${INSTITUTION[1]}<br><b>${dep ? esc(dep.name.toUpperCase()) + " DEPARTMENT" : ""} &mdash; ATTENDANCE REGISTER &mdash; ${cl ? semLabel(cl.semester).toUpperCase() : ""}</b></div>
+    <div class="sub">COURSE: <b>${esc(c.course_code)}</b> &mdash; ${esc(c.course_title)} &nbsp;|&nbsp; LECTURER: ${esc(c.lecturer_name)} &nbsp;|&nbsp; ${cl ? cl.level + " LEVEL, " + esc(cl.session) : ""} &nbsp;|&nbsp; STUDY MODE: ${MODES[c.study_mode].toUpperCase()} &nbsp;|&nbsp; LECTURES HELD: ${lect.length}</div>
+    ${tables}
+    <div class="note">&#10003; = present by QR scan. &#10003;* = marked by hand. Generated by DLAMS on ${new Date().toLocaleDateString("en-GB")}.</div>
+    <div class="sig"><div>Lecturer's name, signature and date</div><div>Head of Department's name, signature and date</div></div>
+    <script>window.onload=function(){window.print()}<\/script></body></html>`;
+  const w = window.open("", "_blank");
+  if (!w) { m.className = "err"; m.textContent = "Your browser blocked the print window. Allow pop-ups for this site and try again."; return; }
+  w.document.write(html); w.document.close();
+}
+
+/* ---------- Student: scan the QR (the phone camera opens this page with ?s=...) ---------- */
+const getPos = () => new Promise((res, rej) => navigator.geolocation
+  ? navigator.geolocation.getCurrentPosition(p => res(p.coords),
+      () => rej(new Error("Location is needed. Switch on location for this site, then try again.")),
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 })
+  : rej(new Error("This phone does not support location.")));
+
+function renderScan() {
+  show(`<h1>Register attendance</h1>
+    <p class="muted">Stand inside the lecture room. DLAMS checks that you are close to the classroom.</p>
+    <div class="panel"><div class="actions"><button class="primary" id="sgo" onclick="doScan()">Register my attendance</button>
+    <button onclick="leaveScan()">Go to my dashboard</button></div><p id="sres" role="status"></p></div>`);
+}
+function leaveScan() { pendingToken = null; history.replaceState(null, "", location.pathname); renderHome(); }
+
+async function doScan() {
+  const r = $("sres"); $("sgo").disabled = true; r.className = ""; r.textContent = "Checking your location…";
+  let pos;
+  try { pos = await getPos(); } catch (e) { r.className = "err"; r.textContent = e.message; $("sgo").disabled = false; return; }
+  const { data, error } = await sb.rpc("scan_attendance", { p_token: pendingToken, p_lat: pos.latitude, p_lng: pos.longitude });
+  if (error) { r.className = "err"; r.textContent = error.message; $("sgo").disabled = false; return; }
+  const why = {
+    not_active: "Your account has not been approved yet. Ask your HOC/CG to approve it.",
+    not_found: "This QR code is not valid.",
+    closed: "This attendance session is not open right now. Ask your HOC/CG.",
+    not_enrolled: "You are not enrolled in this course. If it is an extra course, add it from your dashboard first.",
+    no_location: "Your location was not received. Switch on location and try again.",
+    outside: "You appear to be outside the classroom (" + data.distance_m + " m away, limit " + data.radius_m + " m). Move closer to the room, switch on location and try again.",
+    removed: "You were taken off this session's list. Please speak to your HOC/CG." };
+  if (data.ok) { r.className = "ok"; r.textContent = (data.already ? "You are already marked present for " : "Attendance recorded for ") + data.course + " - " + data.title + "."; return; }
+  r.className = "err"; r.textContent = why[data.reason] || "Attendance could not be recorded."; $("sgo").disabled = false;
+}
+
+/* ---------- HOC/CG: attendance sessions ---------- */
+let sessions = [], attRows = {}, rosters = {}, rosterAt = {}, ticks = {}, opens = new Set(), pollT = null, clockT = null, sigNow = "";
+const effStatus = s => (s.status === "active" && new Date(s.active_until).getTime() < Date.now()) ? "timeup" : s.status;
+const canReopen = s => s.status === "stopped" && s.stopped_at && Date.now() - new Date(s.stopped_at).getTime() < 300000;
+const sig = () => sessions.map(s => s.id + effStatus(s) + (canReopen(s) ? "r" : "") + s.active_until).join("|");
+function stopTimers() { clearInterval(pollT); clearInterval(clockT); pollT = clockT = null; }
+const gmsg = (ok, t) => { const el = $("gmsg"); if (el) { el.className = ok ? "ok" : "err"; el.textContent = t || ""; } };
+
+function qrImg(token) {
+  const q = qrcode(0, "M"); q.addData(location.origin + location.pathname + "?s=" + token); q.make();
+  return q.createImgTag(8, 4, "QR code for attendance");
+}
+
+function drawCreate() {
+  const el = $("screate"); if (!el) return;
+  el.innerHTML = saved.length ? `<div class="panel"><label for="scourse">Course</label>
+    <select id="scourse">${saved.map(c => `<option value="${c.id}">${esc(c.course_code)} - ${esc(c.course_title)} (${MODES[c.study_mode]})</option>`).join("")}</select>
+    <label for="slabel">Lecture name (optional)</label><input id="slabel" placeholder="For example: Week 5 lecture">
+    <div class="actions"><button class="primary" onclick="createSession()">Create QR session</button></div><p id="smsg" role="status"></p></div>`
+    : `<p class="panel">Add your courses first, then you can start attendance sessions.</p>`;
+}
+
+async function loadSessions() {
+  const since = new Date(Date.now() - 2 * 864e5).toISOString();
+  const { data } = await sb.from("sessions").select("*, courses(course_code,course_title,study_mode)")
+    .in(me.hoc ? "class_profile_id" : "course_id", me.hoc ? [me.hoc.class_profile_id] : (window._myCourseIds || [])).in("status", ["inactive", "active", "paused", "stopped"])
+    .gte("created_at", since).order("created_at", { ascending: false });
+  sessions = data || [];
+  const live = sessions.filter(s => s.status !== "inactive"), ids = live.map(s => s.id);
+  for (const cid of [...new Set(live.map(s => s.course_id))]) {
+    if (!rosters[cid] || Date.now() - (rosterAt[cid] || 0) > 30000) {
+      const { data: r } = await sb.rpc("course_roster", { p_course: cid }); rosters[cid] = r || []; rosterAt[cid] = Date.now(); }
+  }
+  attRows = {};
+  if (ids.length) {
+    const { data: a } = await sb.from("attendance")
+      .select("session_id,student_id,status,method,scanned_at,profiles!student_id(full_name,login_id)")
+      .in("session_id", ids).order("scanned_at");
+    (a || []).forEach(r => (attRows[r.session_id] = attRows[r.session_id] || []).push(r));
+  }
+}
+
+function ctlHtml(s) {
+  const st = effStatus(s), id = s.id;
+  if (!isMain()) return `<p class="muted">Only the HOC/CG runs the QR code.</p>`;
+  if (st === "inactive") return `<p class="muted">Get the lecturer's approval in person, then activate the QR.</p>
+    <label for="m${id}">Minutes the QR stays open</label><input id="m${id}" type="number" min="1" max="240" value="15">
+    <div class="actions"><button class="primary" onclick="activate('${id}')">Activate QR</button><button onclick="cancelSession('${id}')">Cancel session</button></div>`;
+  if (st === "active") return `<div class="qr">${qrImg(s.qr_token)}</div>
+    <p>Time left: <strong id="t${id}"></strong></p><p class="muted">Screenshots are not allowed. Students scan this with their phone camera.</p>
+    <div class="actions"><button onclick="act('pause_session','${id}')">Pause</button><button onclick="act('stop_session','${id}')">Stop</button><button class="danger" onclick="terminate('${id}')">Terminate</button></div>`;
+  if (st === "paused" || st === "timeup") return `<p class="muted">${st === "timeup" ? "The time has ended and the session paused itself." : "The session is paused."}</p>
+    <label for="m${id}">Minutes to resume for</label><input id="m${id}" type="number" min="1" max="240" value="${s.duration_minutes || 10}">
+    <div class="actions"><button class="primary" onclick="resume('${id}')">Resume</button><button onclick="act('stop_session','${id}')">Stop</button><button class="danger" onclick="terminate('${id}')">Terminate</button></div>`;
+  return `<p class="muted">Stopped. Check the count with the lecturer, then finalise.</p>
+    <div class="actions">${canReopen(s) ? `<button onclick="reopen('${id}')">Reopen (stopped by mistake)</button>` : ""}
+    <button class="primary" onclick="finalise('${id}')">Finalise register</button><button class="danger" onclick="terminate('${id}')">Terminate</button></div>`;
+}
+
+function liveHtml(s) {
+  if (s.status === "inactive") return "";
+  const rows = (attRows[s.id] || []).filter(r => r.status === "present");
+  const asst = rows.filter(r => r.method === "assisted").length;
+  const have = new Set(rows.map(r => r.student_id)), t = (ticks[s.id] = ticks[s.id] || new Set());
+  const others = (rosters[s.course_id] || []).filter(r => !have.has(r.student_id));
+  return `<p style="margin-top:14px"><strong>${rows.length} present</strong>${asst ? " (" + asst + " marked by hand)" : ""}</p>
+    ${rows.length ? `<div class="wrap"><table>${rows.map(r => `<tr><td>${esc(r.profiles && r.profiles.full_name)}</td><td>${esc(r.profiles && r.profiles.login_id)}</td>
+      <td>${r.method === "assisted" ? '<span class="flag">Marked by hand</span>' : ""}</td>
+      <td><button onclick="removeAtt('${s.id}','${r.student_id}')">Remove</button></td></tr>`).join("")}</table></div>` : ""}
+    <details ${opens.has(s.id) ? "open" : ""} ontoggle="toggleOpen('${s.id}', this.open)"><summary>Mark students who are in the room but could not scan</summary>
+      ${others.length ? others.map(p => `<label class="check"><input type="checkbox" ${t.has(p.student_id) ? "checked" : ""} onchange="tick('${s.id}','${p.student_id}',this.checked)">
+        ${esc(p.full_name)} (${esc(p.login_id)})${p.kind !== "core" ? " - extra" : ""}</label>`).join("") + `<div class="actions"><button class="primary" onclick="markTicked('${s.id}')">Mark ticked students present</button></div>`
+        : `<p class="muted">Everyone enrolled in this course is already on the list.</p>`}
+    </details>`;
+}
+
+const STLABEL = { inactive: "Not active yet", active: "QR is open", timeup: "Time ended", paused: "Paused", stopped: "Stopped" };
+function drawSessions() {
+  sigNow = sig();
+  $("slist").innerHTML = sessions.length ? sessions.map(s => `<div class="panel sess">
+      <strong>${esc(s.courses.course_code)}</strong> ${esc(s.courses.course_title)}<br><span class="muted">${esc(s.label)} - ${STLABEL[effStatus(s)]}</span>
+      <div>${ctlHtml(s)}</div><div id="live-${s.id}">${liveHtml(s)}</div></div>`).join("") : "";
+  clock();
+}
+function drawLive() { sessions.forEach(s => { const el = $("live-" + s.id); if (el) el.innerHTML = liveHtml(s); }); }
+function clock() {
+  sessions.forEach(s => { const el = $("t" + s.id); if (!el) return;
+    const ms = new Date(s.active_until) - Date.now();
+    el.textContent = ms > 0 ? Math.floor(ms / 60000) + ":" + String(Math.floor(ms / 1000) % 60).padStart(2, "0") : "0:00"; });
+  if (sig() !== sigNow) drawSessions();
+}
+async function poll() { await loadSessions(); sig() !== sigNow ? drawSessions() : drawLive(); }
+async function startSessions() { stopTimers(); await loadSessions(); drawSessions(); pollT = setInterval(poll, 4000); clockT = setInterval(clock, 1000); }
+
+const toggleOpen = (id, o) => o ? opens.add(id) : opens.delete(id);
+const tick = (sid, pid, on) => { const t = (ticks[sid] = ticks[sid] || new Set()); on ? t.add(pid) : t.delete(pid); };
+
+async function run(fn, args, okText) {
+  const { error } = await sb.rpc(fn, args);
+  gmsg(!error, error ? error.message : okText);
+  await poll(); return !error;
+}
+const act = (fn, id) => run(fn, { p_session: id });
+const resume = id => run("resume_session", { p_session: id, p_minutes: +$("m" + id).value || null });
+const reopen = id => run("reopen_session", { p_session: id });
+const finalise = id => confirm("Finalise this register? Do this after the lecturer confirms the count.") && run("finalise_session", { p_session: id }, "Register finalised.");
+const terminate = id => {
+  const n = ((attRows[id] || []).filter(r => r.status === "present")).length;
+  return confirm("Terminate this attendance session? It will be discarded and will not appear in any record." + (n ? " The " + n + " student(s) who already registered will not be counted." : "")) && run("cancel_session", { p_session: id }, "Session terminated.");
+};
+const cancelSession = id => confirm("Cancel this session?") && run("cancel_session", { p_session: id });
+const removeAtt = (sid, pid) => confirm("Take this student off the list?") && run("remove_attendance", { p_session: sid, p_student: pid });
+async function markTicked(sid) {
+  const ids = [...(ticks[sid] || [])]; if (!ids.length) { gmsg(false, "Tick at least one student first."); return; }
+  if (await run("mark_assisted_many", { p_session: sid, p_students: ids }, ids.length + " student(s) marked present.")) ticks[sid] = new Set();
+}
+async function activate(id) {
+  try { const pos = await getPos();
+    await run("activate_session", { p_session: id, p_minutes: +$("m" + id).value, p_lat: pos.latitude, p_lng: pos.longitude, p_radius: 150 }); }
+  catch (e) { gmsg(false, e.message); }
+}
+async function createSession() {
+  const { error } = await sb.rpc("create_session", { p_course: $("scourse").value, p_label: $("slabel").value });
+  $("smsg").className = error ? "err" : "ok";
+  $("smsg").textContent = error ? error.message : "Session created. Get the lecturer's approval, then activate it.";
+  if (!error) $("slabel").value = "";
+  await poll();
+}
+
+
+/* ---------- Student: my attendance ---------- */
+async function loadMyAttendance() {
+  const el = $("myatt"); if (!el) return;
+  const { data, error } = await sb.rpc("my_attendance");
+  if (error) { el.innerHTML = `<p class="err">${esc(error.message)}</p>`; return; }
+  const by = {};
+  (data || []).forEach(r => (by[r.course_id] = by[r.course_id] || { code: r.course_code, title: r.course_title, rows: [] }).rows.push(r));
+  const cs = Object.values(by);
+  if (!cs.length) { el.innerHTML = `<p class="panel">No attendance has been recorded for your courses yet.</p>`; return; }
+  el.innerHTML = `<div class="panel wrap"><table><tr><th>Course</th><th>Attended</th><th>Held</th><th>%</th></tr>${cs.map(c => {
+      const n = c.rows.filter(r => r.present).length, t = c.rows.length, pc = Math.round(100 * n / t);
+      return `<tr><td>${esc(c.code)} - ${esc(c.title)}</td><td>${n}</td><td>${t}</td><td class="${pc >= 75 ? "ok" : "err"}">${pc}%</td></tr>`; }).join("")}</table></div>
+    <p class="muted">The 75% line is the proposed requirement and is not final. Only lectures whose registers have been finalised are counted.</p>`
+    + cs.map(c => `<details style="margin-top:8px"><summary>${esc(c.code)}: lecture by lecture</summary><div class="panel wrap"><table><tr><th>Lecture</th><th>Date</th><th>Status</th></tr>${c.rows.map(r =>
+      `<tr><td>${esc(r.label)}</td><td>${new Date(r.held_at).toLocaleDateString("en-GB")}</td><td class="${r.present ? "ok" : "err"}">${r.present ? "Present" : "Absent"}</td></tr>`).join("")}</table></div></details>`).join("");
+}
+
+/* ---------- HOC/CG: lecture records (delete a lecture, restart a course) ---------- */
+const SESS_LABEL = { inactive: "Not started", active: "Open", paused: "Paused", stopped: "Stopped", finalised: "Finalised", cancelled: "Terminated" };
+async function loadRecords() {
+  const el = $("rec"); if (!el) return;
+  const { data } = await sb.from("sessions").select("id,label,status,created_at,activated_at,courses(course_code,course_title)")
+    .eq("class_profile_id", me.hoc.class_profile_id).order("created_at", { ascending: false }).limit(200);
+  const rows = data || [], ids = rows.map(r => r.id), cnt = {};
+  if (ids.length) {
+    const { data: a } = await sb.from("attendance").select("session_id").eq("status", "present").in("session_id", ids);
+    (a || []).forEach(x => { cnt[x.session_id] = (cnt[x.session_id] || 0) + 1; });
+  }
+  window._rec = { rows, cnt };
+  el.innerHTML = `<h2 style="margin-top:8px">Lecture records</h2>` + (rows.length
+    ? `<div class="panel wrap"><table><tr><th>Course</th><th>Lecture</th><th>Date</th><th>Status</th><th>Present</th>${isMain() ? "<th></th>" : ""}</tr>${rows.map(r =>
+        `<tr><td>${esc(r.courses && r.courses.course_code)}</td><td>${esc(r.label)}</td><td>${new Date(r.activated_at || r.created_at).toLocaleDateString("en-GB")}</td>
+         <td>${SESS_LABEL[r.status] || r.status}</td><td>${cnt[r.id] || 0}</td>${isMain() ? `<td><button class="danger" onclick="deleteLecture('${r.id}')">Delete</button></td>` : ""}</tr>`).join("")}</table></div>`
+    : `<p class="panel">No lectures yet.</p>`)
+    + `<p id="recmsg" role="status" class="muted">${isMain() ? "The HOC/CG can delete lectures from the last 2 days. Older lectures can only be deleted by the administrator." : ""}</p>`
+    + (isAdmin() && saved.length ? `<div class="panel"><strong>Restart a course</strong>
+        <p class="muted">Deletes every lecture record of the course for this semester. The course itself stays.</p>
+        <select id="rscourse" aria-label="Course to restart">${saved.map(c => `<option value="${c.id}">${esc(c.course_code)} - ${esc(c.course_title)}</option>`).join("")}</select>
+        <div class="actions"><button class="danger" onclick="restartCourse()">Restart course</button></div></div>` : "");
+}
+async function deleteLecture(id) {
+  const r = (window._rec.rows || []).find(x => x.id === id), n = (window._rec.cnt || {})[id] || 0;
+  if (!confirm("Delete this lecture record" + (r && r.courses ? " (" + r.courses.course_code + ")" : "") + "? " + n + " student attendance mark(s) will be deleted for good. This cannot be undone.")) return;
+  const { error } = await sb.rpc("delete_session", { p_session: id });
+  await loadRecords(); if (error) { const m = $("recmsg"); m.className = "err"; m.textContent = error.message; }
+}
+async function restartCourse() {
+  const c = saved.find(x => x.id === $("rscourse").value); if (!c) return;
+  if (prompt("This deletes ALL lecture records and attendance marks of " + c.course_code + " for good.\n\nType the course code to confirm:") !== c.course_code) return;
+  const { error } = await sb.rpc("restart_course", { p_course: c.id });
+  await loadRecords(); const m = $("recmsg"); m.className = error ? "err" : "ok"; m.textContent = error ? error.message : c.course_code + " has been restarted.";
+}
+
+/* ---------- Administrator: classes, main HOC/CGs, waiting students ---------- */
+const isAdmin = () => !!me && me.roles.some(r => r.role === "admin");
+async function loadAdmin() {
+  const el = $("adm"); if (!el) return;
+  const [sc, dp, cp, ro, pd, st, se, ls] = await Promise.all([
+    sb.from("schools").select("id,name,acronym").order("name"),
+    sb.from("departments").select("id,name,code,school_id").order("name"),
+    sb.from("class_profiles").select("id,department_id,school_id,programme,level,session,semester").order("level"),
+    sb.from("role_assignments").select("profile_id,class_profile_id").eq("role", "hoc_cg").eq("slot", "main").eq("is_active", true),
+    sb.from("profiles").select("id,login_id,full_name,phone,class_profile_id,admission_route,study_mode,current_level").eq("status", "pending").eq("account_type", "student").order("full_name"),
+    sb.from("profiles").select("id,login_id,full_name,phone,status,class_profile_id,admission_route,study_mode,current_level").eq("account_type", "student").order("login_id"),
+    sb.from("academic_sessions").select("label").order("label", { ascending: false }),
+    sb.rpc("leaders_in_scope")]);
+  const schools = sc.data || [], depts = dp.data || [], classes = cp.data || [], roles = ro.data || [];
+  const pend = pd.data || [], students = st.data || [], sessions = (se.data || []).map(x => x.label), leaders = ls.data || [];
+  window._adm = { schools, depts, classes, students, sessions, leaders };
+  const hocIds = roles.map(r => r.profile_id);
+  const { data: hn } = hocIds.length ? await sb.from("profiles").select("id,full_name,hoc_cg_id").in("id", hocIds) : { data: [] };
+  const hoc = cid => { const r = roles.find(x => x.class_profile_id === cid), p = r && (hn || []).find(x => x.id === r.profile_id);
+    return p ? esc(p.full_name) + " (" + esc(p.hoc_cg_id) + ")" : null; };
+  const classesOf = did => classes.filter(c => c.department_id === did);
+
+  const schoolBlock = s => {
+    const dean = leaders.find(l => l.role === "dean" && l.school_name === s.name);
+    const sub = leaders.find(l => l.role === "subdean" && l.school_name === s.name);
+    const hods = leaders.filter(l => l.role === "hod" && l.school_name === s.name);
+    const ds = depts.filter(d => d.school_id === s.id);
+    return `<details class="dd"><summary>${esc(s.name)} <span class="muted">Dean: ${dean ? esc(dean.full_name) : "not appointed"}</span></summary>
+      ${ds.length ? ds.map(d => `<details class="dd" style="margin-left:14px"><summary>${esc(d.name)} (${esc(d.code || "")})</summary>
+        ${classesOf(d.id).length ? classesOf(d.id).map(c => `<div style="margin:6px 0 6px 14px">${c.level} Level, ${esc(c.session)}, ${semLabel(c.semester)}
+          &middot; HOC/CG: ${hoc(c.id) || "none"} <button onclick="pickHoc('${c.id}')">${hoc(c.id) ? "Change" : "Assign"}</button></div>`).join("")
+          : `<p class="muted" style="margin-left:14px">No students have registered in this department yet.</p>`}
+        <p style="margin:6px 0 6px 14px"><button class="danger" onclick="removeDepartment('${d.id}', '${esc(d.name)}')">Delete this department</button></p>
+      </details>`).join("") : `<p class="muted" style="margin-left:14px">No departments yet.</p>`}
+      <p style="margin-left:14px"><strong>Sub-dean:</strong> ${sub ? esc(sub.full_name) : "none"} &nbsp; <strong>HODs:</strong> ${hods.length ? hods.map(h => esc(h.full_name) + " (" + esc(h.dept_name || "") + ")").join(", ") : "none"}</p>
+    </details>`;
+  };
+  const schoolOpts = schools.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join("") || `<option value="">Add a school first</option>`;
+  const sessOpts = sessions.map(x => `<option value="${x}">${x}</option>`).join("") || `<option value="">Add a session first</option>`;
+  const pendRows = pend.length ? `<div class="panel wrap"><p class="muted" style="margin-top:0">Approve future HOC/CGs here, then assign them above.</p><table><tr><th>Name</th><th>Matric</th><th>Department</th><th>Mode</th><th></th></tr>${pend.map(p =>
+    `<tr><td>${esc(p.full_name)}</td><td>${esc(p.login_id)}</td><td>${esc((classes.find(c => c.id === p.class_profile_id) || {}).programme || "")}</td><td>${modeLine(p)}</td>
+     <td style="white-space:nowrap"><button onclick="admDeny('${p.id}')">Deny</button> <button class="primary" onclick="admApprove('${p.id}')">Approve</button></td></tr>`).join("")}</table></div>`
+    : `<p class="panel">No students are waiting.</p>`;
+
+  el.innerHTML = `
+    <h2 style="margin-top:8px">1. Schools (${schools.length} of 5)</h2>
+    <div class="panel">${schools.length ? `<p>${schools.map(s => `<span class="flag" style="margin:2px">${esc(s.name)}</span>`).join(" ")}</p>` : `<p class="muted">No schools yet.</p>`}
+      ${schools.length < 5 ? `<div class="fields" style="margin-top:8px"><div class="wide"><label for="scn">School name</label><input id="scn" placeholder="For example: School of Science"></div></div>
+        <div class="actions"><button class="primary" onclick="addSchool()">Add school</button></div>` : `<p class="muted">All five schools are set up.</p>`}
+      <p id="schmsg" role="status"></p></div>
+
+    <h2>2. Schools, their departments and HODs</h2>
+    ${schools.length ? schools.map(schoolBlock).join("") : `<p class="panel">Add the schools first.</p>`}
+    <div id="hocpick"></div>
+
+    <h2>3. Add a department</h2>
+    <div class="panel"><div class="fields">
+      <div><label for="csch">School</label><select id="csch">${schoolOpts}</select></div>
+      <div><label for="cnm">Department name</label><input id="cnm" placeholder="For example: English Language Education"></div>
+      <div><label for="ccd">Code (2 to 4 letters)</label><input id="ccd" maxlength="4" placeholder="For example: ENG"></div>
+    </div><p class="muted">Students choose their level, session and semester when they register.</p>
+      <div class="actions"><button class="primary" onclick="addDepartment()">Add department</button></div><p id="cmsg" role="status"></p></div>
+
+    <h2>4. Academic sessions</h2>
+    <div class="panel"><p>${sessions.length ? sessions.map(x => `<span class="flag" style="margin:2px">${x}</span>`).join(" ") : `<span class="muted">None yet</span>`}</p>
+      <div class="fields"><div><label for="sesn">New session</label><input id="sesn" placeholder="For example: 2027/2028"></div></div>
+      <div class="actions"><button class="primary" onclick="addSession()">Add session</button></div><p id="sesmsg" role="status"></p></div>
+
+    <h2>5. Waiting students (${pend.length})</h2>${pendRows}
+
+    <div id="leadadm"></div>
+
+    <h2>6. All students, by school, department, level and mode</h2>
+    <div class="panel"><div id="asSel" style="margin-bottom:10px"></div><input id="asq" placeholder="Search by name or matric number" aria-label="Search students" oninput="admDrawList()">
+      <div id="asl" class="wrap" style="margin-top:10px"></div></div>
+    <div id="astu"></div>`;
+  drawAdmStudents();
+  loadLeadersAdmin();
+}
+
+async function pickHoc(cid) {
+  const { data } = await sb.from("profiles").select("id,full_name,login_id").eq("class_profile_id", cid).eq("status", "active").eq("account_type", "student").order("login_id");
+  $("hocpick").innerHTML = (data && data.length)
+    ? `<div class="panel" style="margin-top:12px"><label for="hsel">Choose an approved student of this class</label>
+       <select id="hsel">${data.map(p => `<option value="${p.id}">${esc(p.full_name)} (${esc(p.login_id)})</option>`).join("")}</select>
+       <div class="actions"><button class="primary" onclick="setHoc('${cid}')">Make main HOC/CG</button><button onclick="$('hocpick').innerHTML=''">Cancel</button></div><p id="hmsg" role="status"></p></div>`
+    : `<p class="panel">No approved students in this class yet. Approve the future HOC/CG's registration first (see Waiting students below).</p>`;
+}
+async function setHoc(cid) {
+  const { error } = await sb.rpc("set_main_hoc", { p_class: cid, p_student: $("hsel").value });
+  if (error) { $("hmsg").className = "err"; $("hmsg").textContent = error.message; return; }
+  loadAdmin();
+}
+async function admApprove(id) { const { error } = await sb.rpc("approve_student", { p_student: id }); await loadAdmin(); if (error) flashMsg(error.message); }
+async function admDeny(id) { const rs = pickReason(DENY_REASONS, "Deny this registration"); if (!rs) return; const { error } = await sb.rpc("deny_student", { p_student: id, p_reason: rs.key, p_note: rs.note }); await loadAdmin(); if (error) flashMsg(error.message); }
+async function addSchool() {
+  const { error } = await sb.rpc("add_school", { p_name: $("scn").value });
+  if (error) { $("schmsg").className = "err"; $("schmsg").textContent = error.message; return; }
+  loadAdmin();
+}
+async function addSession() {
+  const { error } = await sb.rpc("add_academic_session", { p_label: $("sesn").value });
+  if (error) { $("sesmsg").className = "err"; $("sesmsg").textContent = error.message; return; }
+  loadAdmin();
+}
+async function removeDepartment(id, name) {
+  if (!confirm("Delete the department " + name + "? This is only possible when it has no students, courses, HOD or HOC/CG. You can add it again afterwards.")) return;
+  const { error } = await sb.rpc("delete_department", { p_dept: id });
+  if (error) flashMsg(error.message); else loadAdmin();
+}
+async function addDepartment() {
+  const { error } = await sb.rpc("add_department_profile", { p_school: $("csch").value, p_name: $("cnm").value, p_code: $("ccd").value });
+  if (error) { $("cmsg").className = "err"; $("cmsg").textContent = error.message; return; }
+  loadAdmin();
+}
+function editClass(cid) {
+  const A = window._adm, c = A.classes.find(x => x.id === cid); if (!c) return;
+  $("hocpick").innerHTML = `<div class="panel" style="margin-top:12px"><strong>Edit department: ${c.level} Level, ${esc(c.session)}</strong>
+    <div class="fields" style="margin-top:8px">
+      <div class="wide"><label for="ecs">School</label><select id="ecs">${A.schools.map(s => `<option value="${s.id}" ${s.id === c.school_id ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select></div>
+      <div class="wide"><label for="ecn">Department</label><input id="ecn" value="${esc(c.programme)}"></div><div><label for="ecc">Code</label><input id="ecc" value="${esc(c.code || "")}"></div></div>
+    <div class="actions"><button class="primary" onclick="saveClass('${cid}')">Save</button><button onclick="$('hocpick').innerHTML=''">Cancel</button></div>
+    <p id="ecmsg" role="status"></p></div>`;
+}
+async function saveClass(cid) {
+  const { error } = await sb.rpc("update_course_of_study", { p_class: cid, p_school: $("ecs").value, p_programme: $("ecn").value, p_code: $("ecc").value || null });
+  if (error) { $("ecmsg").className = "err"; $("ecmsg").textContent = error.message; return; }
+  loadAdmin();
+}
+
+/* All students, for the administrator */
+let admSel = { school: "", dept: "", mode: "", level: "" };
+function admRows() {
+  const A = window._adm;
+  return A.students.map(p => {
+    const c = A.classes.find(x => x.id === p.class_profile_id);
+    return { p, school: c ? (c.school_id || "") : "", dept: c ? (c.department_id || "") : "", mode: p.study_mode || "", level: c ? String(c.level) : "" };
+  });
+}
+function admPick(level, val) {
+  const order = ["school", "dept", "mode", "level"], i = order.indexOf(level);
+  admSel[level] = val;
+  order.slice(i + 1).forEach(k => admSel[k] = "");
+  drawAdmStudents();
+}
+function drawAdmStudents() {
+  const A = window._adm, R = admRows(), n = f => R.filter(f).length;
+  const opt = (v, label, cur, c) => `<option value="${v}" ${v === cur ? "selected" : ""}>${esc(label)} (${c})</option>`;
+  const depts = A.depts.filter(d => d.school_id === admSel.school);
+  $("asSel").innerHTML = `<div class="fields">
+    <div><label for="as-s">School</label><select id="as-s" onchange="admPick('school', this.value)">
+      <option value="">Choose a school</option>${A.schools.map(s => opt(s.id, s.name, admSel.school, n(r => r.school === s.id))).join("")}</select></div>
+    <div><label for="as-d">Department</label><select id="as-d" onchange="admPick('dept', this.value)" ${admSel.school ? "" : "disabled"}>
+      <option value="">Choose a department</option>${depts.map(d => opt(d.id, d.name, admSel.dept, n(r => r.dept === d.id))).join("")}</select></div>
+    <div><label for="as-m">Study mode</label><select id="as-m" onchange="admPick('mode', this.value)" ${admSel.dept ? "" : "disabled"}>
+      <option value="">Choose a study mode</option>${Object.entries(MODES).map(([k, v]) => opt(k, v, admSel.mode, n(r => r.dept === admSel.dept && r.mode === k))).join("")}</select></div>
+    <div><label for="as-l">Level</label><select id="as-l" onchange="admPick('level', this.value)" ${admSel.mode ? "" : "disabled"}>
+      <option value="">Choose a level</option>${["100", "200", "300", "400"].map(l => opt(l, l + " Level", admSel.level, n(r => r.dept === admSel.dept && r.mode === admSel.mode && r.level === l))).join("")}</select></div>
+  </div>`;
+  admDrawList();
+}
+function admDrawList() {
+  const box = $("asl"); if (!box) return;
+  if (!(admSel.school && admSel.dept && admSel.mode && admSel.level)) {
+    box.innerHTML = `<p class="muted">Choose a school, a department, a study mode and a level to see the students.</p>`; return;
+  }
+  const q = ($("asq") ? $("asq").value : "").trim().toLowerCase();
+  const list = admRows().filter(r => r.dept === admSel.dept && r.mode === admSel.mode && r.level === admSel.level).map(r => r.p)
+    .filter(p => !q || p.full_name.toLowerCase().includes(q) || p.login_id.toLowerCase().includes(q))
+    .sort((a, b) => cmpNo(a.login_id, b.login_id));
+  box.innerHTML = list.length ? `<div class="wrap"><table><tr><th>Name</th><th>Matric</th><th>Status</th><th></th></tr>${list.map(p =>
+    `<tr><td>${esc(p.full_name)}</td><td>${esc(p.login_id)}</td><td>${esc(p.status)}</td>
+     <td style="white-space:nowrap"><button class="icon" aria-label="Edit student" title="Edit" onclick="editAdmStudent('${p.id}')">&#9998;</button>
+     <button onclick="resetPw('${p.id}')">Reset password</button>
+     ${p.status === "denied" ? `<button class="primary" onclick="approveAny('${p.id}')">Approve</button>` : ""}
+     ${["denied", "suspended"].includes(p.status) ? `<button class="danger" onclick="deleteRecord('${p.id}')">Delete record</button>` : ""}</td></tr>`).join("")}</table></div>`
+    : `<p class="muted">No students in this selection.</p>`;
+}
+
+function editAdmStudent(id) {
+  const A = window._adm, p = A.students.find(x => x.id === id); if (!p) return;
+  const label = c => `${esc(schoolName(c))} - ${esc(c.programme)}, ${c.level} Level, ${esc(c.session)}, ${semLabel(c.semester)}`;
+  function schoolName(c) { const s = A.schools.find(x => x.id === c.school_id); return s ? s.name : "No school yet"; }
+  $("astu").innerHTML = `<div class="panel" style="margin-top:12px"><strong>Edit ${esc(p.full_name)}</strong>
+    <div class="fields" style="margin-top:8px">
+      <div class="wide"><label for="ax-n">Full name</label><input id="ax-n" value="${esc(p.full_name)}"></div>
+      <div><label for="ax-m">Matric number</label><input id="ax-m" value="${esc(p.login_id)}"></div>
+      <div><label for="ax-p">Phone</label><input id="ax-p" value="${esc(p.phone)}"></div>
+      <div class="wide"><label for="ax-c">Department</label><select id="ax-c">${A.classes.map(c => `<option value="${c.id}" ${c.id === p.class_profile_id ? "selected" : ""}>${label(c)}</option>`).join("")}</select></div>
+      <div><label for="ax-r">Admitted through</label><select id="ax-r">${Object.entries(ROUTES).map(([k, v]) => `<option value="${k}" ${k === p.admission_route ? "selected" : ""}>${v}</option>`).join("")}</select></div>
+      <div><label for="ax-s">Study mode</label><select id="ax-s">${Object.entries(MODES).map(([k, v]) => `<option value="${k}" ${k === p.study_mode ? "selected" : ""}>${v}</option>`).join("")}</select></div>
+    </div>
+    <div class="actions"><button class="primary" onclick="saveAdmStudent('${id}')">Save</button><button onclick="$('astu').innerHTML=''">Cancel</button></div>
+    <p id="axmsg" role="status"></p></div>`;
+}
+async function saveAdmStudent(id) {
+  const { error } = await sb.rpc("admin_update_student", { p_student: id, p_name: $("ax-n").value, p_phone: $("ax-p").value,
+    p_login: $("ax-m").value, p_class: $("ax-c").value, p_route: $("ax-r").value, p_mode: $("ax-s").value });
+  if (error) { $("axmsg").className = "err"; $("axmsg").textContent = error.message; return; }
+  $("astu").innerHTML = ""; loadAdmin();
+}
+
+/* Password reset: temporary password 12345678, the student must choose a new one at next sign-in */
+async function resetPw(id) {
+  const p = (window._adm && window._adm.students || []).find(x => x.id === id) || people.find(x => x.id === id);
+  if (!confirm("Reset " + (p ? p.full_name : "this student") + "'s password to the temporary password 12345678? They must choose a new password when they next sign in.")) return;
+  const { error } = await sb.rpc("reset_student_password", { p_student: id });
+  flashMsg(error ? error.message : "Done. Give the temporary password 12345678 to the student only. They must choose a new one when they sign in.");
+}
+
+/* Forced password change after a reset or a temporary password */
+function renderChangePassword(msg) {
+  show(`<h1>Choose a new password</h1>
+    <p class="muted">You signed in with a temporary password. Choose your own password to continue.</p>
+    <form class="panel" style="margin-top:16px" onsubmit="doChangePassword(event)">
+      <label for="np1">New password</label><input id="np1" type="password" autocomplete="new-password" required>
+      <label for="np2">Type the new password again</label><input id="np2" type="password" autocomplete="new-password" required>
+      <div class="actions"><button class="primary" id="npgo">Save and continue</button></div>
+      <p class="err" id="nperr" role="alert">${esc(msg || "")}</p>
+    </form>
+    <p><button onclick="signOut()">Sign out</button></p>`);
+}
+async function doChangePassword(e) {
+  e.preventDefault();
+  const a = $("np1").value, b = $("np2").value;
+  if (a !== b) { $("nperr").textContent = "The two passwords do not match."; return; }
+  if (a.length < 8) { $("nperr").textContent = "Use at least 8 characters."; return; }
+  if (a === "12345678") { $("nperr").textContent = "Choose a password other than the temporary one."; return; }
+  $("npgo").disabled = true;
+  const { error } = await sb.auth.updateUser({ password: a });
+  if (error) { $("npgo").disabled = false; $("nperr").textContent = error.message; return; }
+  await sb.rpc("complete_password_change");
+  await loadMe();
+}
+
+/* ---------- Lecturer dashboard (lecturers, HODs and Deans) ---------- */
+function renderStaff() {
+  stopTimers();
+  const p = me.prof;
+  const leader = me.roles.some(r => ["dean", "subdean", "hod"].includes(r.role));
+  show(`<div class="bar"><div><h1>${esc(p.full_name)}</h1><p class="muted">${esc(p.login_id)} · Lecturer</p></div>
+    <button onclick="signOut()">Sign out</button></div>
+    <div class="shell"><nav class="side" aria-label="Lecturer menu">
+      <button id="nv-courses" onclick="sec('courses')">My courses</button>
+      <button id="nv-attendance" onclick="sec('attendance')">Attendance</button>
+      <button id="nv-notices" onclick="sec('notices')">Notices</button>
+      <button id="nv-records" onclick="sec('records')">Registers</button>
+      ${leader ? `<button id="nv-oversight" onclick="sec('oversight')">Oversight</button>` : ""}
+      ${me.roles.some(r => ["dean", "subdean"].includes(r.role)) ? `<button id="nv-appoint" onclick="sec('appoint')">Appointments</button>` : ""}
+      <button id="nv-account" onclick="sec('account')">My account</button></nav>
+    <div>
+      <section id="sec-courses"></section>
+      <section id="sec-attendance"><h2 style="margin-top:8px">Attendance sessions</h2><div id="screate"></div><p id="gmsg" role="status"></p><div id="slist"></div></section>
+      <section id="sec-notices"></section>
+      <section id="sec-records"></section>
+      <section id="sec-account"></section>
+      ${leader ? `<section id="sec-oversight"></section><section id="sec-appoint"></section>` : ""}
+    </div></div>`);
+  $("app").className = "wide";
+  sec("courses");
+  renderStaffAccount(); loadNotices(); loadStaffCourses();
+  loadRoleBanners();
+  if (leader) loadOversight();
+  loadAppointedBy();
+}
+
+async function loadStaffCourses() {
+  const { data, error } = await sb.from("courses")
+    .select("id,course_code,course_title,lecturer_name,audience,lecturer_flagged_at,class_profile_id,class_profiles(programme,level,session,semester)")
+    .eq("lecturer_profile_id", me.prof.id).order("course_code");
+  window._myCourses = data || []; window._myCourseIds = window._myCourses.map(c => c.id);
+  const cos = c => c.class_profiles ? `${esc(c.class_profiles.programme)}, ${c.class_profiles.level} Level, ${esc(c.class_profiles.session)}, ${semLabel(c.class_profiles.semester)}` : "";
+  $("sec-courses").innerHTML = `<h2 style="margin-top:8px">My courses</h2>` + (error ? `<p class="err">${esc(error.message)}</p>`
+    : window._myCourses.length ? `<div class="panel wrap"><table><tr><th>Code</th><th>Title</th><th>Department</th><th>Status</th></tr>${window._myCourses.map(c =>
+        `<tr><td>${esc(c.course_code)}</td><td>${esc(c.course_title)}</td><td>${cos(c)}</td><td>${c.lecturer_flagged_at ? '<span class="flag">Flagged</span>' : "Assigned"}</td></tr>`).join("")}</table></div>`
+    : `<p class="panel">No courses have been assigned to you yet. The HOC/CG of the class assigns them.</p>`);
+  drawStaffCreate(); loadRegisters(); startSessions();
+}
+
+function drawStaffCreate() {
+  const cs = window._myCourses || [];
+  $("screate").innerHTML = cs.length ? `<div class="panel"><label for="scourse2">Course</label>
+    <select id="scourse2">${cs.map(c => `<option value="${c.id}">${esc(c.course_code)} - ${esc(c.course_title)}${c.class_profiles ? " (" + esc(c.class_profiles.programme) + ", " + c.class_profiles.level + " Level)" : ""}</option>`).join("")}</select>
+    <label for="slabel2">Lecture name (optional)</label><input id="slabel2" placeholder="For example: Week 5 lecture">
+    <div class="actions"><button class="primary" onclick="staffCreateSession()">Create QR session</button></div><p id="smsg2" role="status"></p></div>`
+    : `<p class="panel">You have no courses yet.</p>`;
+}
+async function staffCreateSession() {
+  const { error } = await sb.rpc("create_session", { p_course: $("scourse2").value, p_label: $("slabel2").value });
+  $("smsg2").className = error ? "err" : "ok";
+  $("smsg2").textContent = error ? error.message : "Session created. Get the class's approval in person, then activate the QR.";
+  if (!error) $("slabel2").value = "";
+  await poll();
+}
+
+async function loadNotices() {
+  const el = $("sec-notices");
+  const { data, error } = await sb.from("notifications").select("id,kind,message,created_at,read_at,course_id")
+    .eq("profile_id", me.prof.id).order("created_at", { ascending: false }).limit(100);
+  el.innerHTML = `<h2 style="margin-top:8px">Notices</h2>` + (error ? `<p class="err">${esc(error.message)}</p>`
+    : (data && data.length) ? `<div class="panel wrap"><table>${data.map(n => `<tr>
+        <td>${n.read_at ? "" : '<span class="flag">New</span> '}${esc(n.message)}<br><span class="muted">${new Date(n.created_at).toLocaleString("en-GB")}</span></td>
+        <td style="white-space:nowrap">${n.kind === "course_assigned" && n.course_id ? `<button onclick="flagCourse('${n.course_id}')">Not my course</button>` : ""}
+        ${n.read_at ? "" : `<button onclick="readNotice('${n.id}')">Mark read</button>`}</td></tr>`).join("")}</table></div>`
+    : `<p class="panel">No notices yet.</p>`);
+}
+async function readNotice(id) { await sb.rpc("mark_notification_read", { p_id: id }); loadNotices(); }
+async function flagCourse(id) {
+  if (!confirm("Tell the HOC/CG this course is not yours? They will be notified.")) return;
+  const { error } = await sb.rpc("flag_assignment", { p_course: id });
+  if (error) flashMsg(error.message);
+  loadNotices(); loadStaffCourses();
+}
+
+async function loadRegisters() {
+  const cs = window._myCourses || [];
+  $("sec-records").innerHTML = `<h2 style="margin-top:8px">Registers</h2>` + (cs.length
+    ? `<div class="panel"><label for="regc">Course</label><select id="regc" onchange="showRegister(this.value)">${cs.map(c => `<option value="${c.id}">${esc(c.course_code)} - ${esc(c.course_title)}</option>`).join("")}</select>
+       <div id="regout" style="margin-top:10px"></div></div>`
+    : `<p class="panel">No courses yet.</p>`);
+  if (cs.length) showRegister(cs[0].id);
+}
+async function showRegister(cid) {
+  const out = $("regout"); if (!out) return;
+  out.innerHTML = `<p class="muted">Loading…</p>`;
+  const [ro, ss] = await Promise.all([
+    sb.rpc("course_roster", { p_course: cid }),
+    sb.from("sessions").select("id,label,created_at,activated_at").eq("course_id", cid).eq("status", "finalised").order("created_at")]);
+  if (ro.error) { out.innerHTML = `<p class="err">${esc(ro.error.message)}</p>`; return; }
+  const roster = (ro.data || []).sort((a, b) => cmpNo(a.login_id, b.login_id));
+  const lect = ss.data || [];
+  let got = new Map();
+  if (lect.length) {
+    const { data: at } = await sb.from("attendance").select("session_id,student_id,method").in("session_id", lect.map(x => x.id)).eq("status", "present");
+    got = new Map((at || []).map(a => [a.session_id + a.student_id, a.method]));
+  }
+  const body = roster.map((p, i) => { let n = 0;
+    const cells = lect.map(x => { const v = got.get(x.id + p.student_id); if (v) n++; return `<td style="text-align:center">${v ? (v === "assisted" ? "&#10003;*" : "&#10003;") : ""}</td>`; }).join("");
+    return `<tr><td>${i + 1}</td><td>${esc(p.full_name)}${p.kind !== "core" ? ' <span class="flag">extra</span>' : ""}</td><td>${esc(p.login_id)}</td>${cells}<td>${n}</td><td>${lect.length ? Math.round(100 * n / lect.length) : 0}%</td></tr>`; }).join("");
+  out.innerHTML = `<div class="wrap" id="regprint"><table><tr><th>S/N</th><th>Name</th><th>Matric</th>${lect.map((x, i) =>
+      `<th>L${i + 1}<br>${new Date(x.activated_at || x.created_at).toLocaleDateString("en-GB")}</th>`).join("")}<th>Total</th><th>%</th></tr>${body}</table></div>
+    <p class="muted">&#10003; = present by scan. &#10003;* = marked by hand. Only finalised lectures are shown.</p>
+    <div class="actions"><button onclick="window.print()">Print register</button></div>`;
+}
+
+function renderStaffAccount() {
+  $("sec-account").innerHTML = `<h2 style="margin-top:8px">My account</h2><div class="panel">
+    <p><strong>${esc(me.prof.full_name)}</strong><br><span class="muted">DLAMS ID: ${esc(me.prof.login_id)}</span></p>
+    <label for="cp1">New password</label><input id="cp1" type="password" autocomplete="new-password">
+    <label for="cp2">Type it again</label><input id="cp2" type="password" autocomplete="new-password">
+    <div class="actions"><button class="primary" onclick="staffChangePw()">Change password</button></div><p id="cpm" role="status"></p></div>`;
+}
+async function staffChangePw() {
+  const a = $("cp1").value, b = $("cp2").value;
+  if (a !== b) { $("cpm").className = "err"; $("cpm").textContent = "The two passwords do not match."; return; }
+  if (a.length < 8 || a === "12345678") { $("cpm").className = "err"; $("cpm").textContent = "Use at least 8 characters, not the temporary password."; return; }
+  const { error } = await sb.auth.updateUser({ password: a });
+  $("cpm").className = error ? "err" : "ok";
+  $("cpm").textContent = error ? error.message : "Password changed.";
+  if (!error) await sb.rpc("complete_password_change");
+}
+
+/* Every list opens and closes: each heading becomes a dropdown section */
+const tidyLists = root => root.querySelectorAll("h2").forEach(h => {
+  if (h.dataset.dd) return; h.dataset.dd = "1";
+  const d = document.createElement("details"); d.open = false; d.className = "dd";
+  const sm = document.createElement("summary"); sm.textContent = h.textContent; d.appendChild(sm);
+  const kids = []; let n = h.nextSibling;
+  while (n && !(n.nodeType === 1 && n.tagName === "H2")) { kids.push(n); n = n.nextSibling; }
+  h.replaceWith(d); kids.forEach(k => d.appendChild(k));
+});
+new MutationObserver(() => { tidyLists($("app")); addPrintButtons($("app")); }).observe($("app"), { childList: true, subtree: true });
+
+function addPrintButtons(root) {
+  root.querySelectorAll("table").forEach(t => {
+    if (t.dataset.pr || t.closest("#regprint")) return;
+    t.dataset.pr = "1";
+    const b = document.createElement("button");
+    b.textContent = "Print this list"; b.style.margin = "4px 0 8px";
+    b.onclick = () => printTable(t);
+    t.before(b);
+  });
+}
+function printTable(t) {
+  const d = t.closest("details"), title = d && d.querySelector("summary") ? d.querySelector("summary").textContent : document.title;
+  const clone = t.cloneNode(true); clone.querySelectorAll("button").forEach(x => x.remove());
+  const w = window.open("", "_blank");
+  if (!w) { flashMsg("Allow pop-ups for this site to print."); return; }
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>body{font:12px Arial,sans-serif}table{border-collapse:collapse;width:100%}th,td{border:1px solid #444;padding:4px 6px;text-align:left}th{background:#eee}h1{font-size:15px}</style></head><body><h1>${esc(title)}</h1>${clone.outerHTML}<script>window.onload=function(){window.print()}<\/script></body></html>`);
+  w.document.close();
+}
+
+/* ---------- Dean, Sub-dean and HOD: oversight and appointments ---------- */
+const LEAD_ROLE = { dean: "Dean", subdean: "Sub-dean", hod: "HOD" };
+async function loadOversight() {
+  const el = $("sec-oversight"); if (!el) return;
+  const [ls, lc, sr] = await Promise.all([
+    sb.rpc("leaders_in_scope"), sb.rpc("lecturers_in_scope"),
+    sb.from("role_assignments").select("school_id").eq("profile_id", me.prof.id).in("role", ["dean", "subdean"]).eq("is_active", true).limit(1)]);
+  window._leadSchool = sr.data && sr.data[0] ? sr.data[0].school_id : null;
+  const dl = window._leadSchool ? await sb.from("departments").select("name").eq("school_id", window._leadSchool).order("name") : { data: [] };
+  const leaders = ls.data || [], lect = lc.data || [];
+  const school = (lect[0] && lect[0].school_name) || (leaders[0] && leaders[0].school_name) || "";
+  const dean = leaders.find(l => l.role === "dean"), sub = leaders.find(l => l.role === "subdean");
+  const hods = leaders.filter(l => l.role === "hod");
+  const byDept = {};
+  lect.forEach(r => {
+    const k = r.dept_name || "No department";
+    byDept[k] = byDept[k] || {};
+    const key = r.lecturer_id || ("n:" + r.full_name);
+    const L = byDept[k][key] = byDept[k][key] || { name: r.full_name, login: r.login_id, courses: [] };
+    L.courses.push(r.course_code + " - " + r.course_title);
+  });
+  const depts = [...new Set([...Object.keys(byDept), ...((dl.data || []).map(d => d.name))])].sort();
+  el.innerHTML = `<h2 style="margin-top:8px">${esc(school) || "Your school"}</h2>
+    <p>Dean: <strong>${dean ? esc(dean.full_name) : "not appointed"}</strong>${dean && dean.appointed_by ? ` <span class="muted">(appointed by ${esc(dean.appointed_by)})</span>` : ""}${sub ? " &nbsp; Sub-dean: <strong>" + esc(sub.full_name) + "</strong>" : ""}</p>
+    ${hods.length ? `<p class="muted">HOD: ${hods.map(h => esc(h.full_name) + " (" + esc(h.dept_name || "") + ")").join(", ")}</p>` : ""}
+    <h2>Lecturers and their courses</h2>
+    ${depts.length ? depts.map(d => `<details class="dd"><summary>${esc(d)}</summary>
+        ${byDept[d] ? "" : `<p class="muted" style="margin-left:14px">No courses have been added yet.</p>`}${Object.values(byDept[d] || {}).sort((a, b) => cmpNo(a.login, b.login)).map(L => `<div style="margin:8px 0 8px 14px"><strong>${esc(L.name)}</strong> <span class="muted">${esc(L.login)}</span><br>${L.courses.map(c => esc(c)).join("<br>")}</div>`).join("")}
+      </details>`).join("") : `<p class="panel">No lecturers have been given courses yet.</p>`}`;
+  loadAppointForm(lect);
+}
+
+async function loadAppointForm(lect) {
+  const el = $("sec-appoint"); if (!el) return;
+  const isDean = me.roles.some(r => r.role === "dean");
+  const { data: depts } = window._leadSchool
+    ? await sb.from("departments").select("id,name").eq("school_id", window._leadSchool).order("name") : { data: [] };
+  const people = [...new Map((lect || []).filter(r => r.lecturer_id).map(r => [r.lecturer_id, r])).values()].sort((a, b) => cmpNo(a.login_id, b.login_id));
+  el.innerHTML = `<h2 style="margin-top:8px">Appoint a leader</h2><div class="panel"><div class="fields">
+      <div class="wide"><label for="apsel">Lecturer</label><select id="apsel">${people.length
+        ? people.map(r => `<option value="${esc(r.login_id)}">${esc(r.full_name)} (${esc(r.login_id)})</option>`).join("")
+        : `<option value="">No lecturers in your school yet</option>`}</select></div>
+      <div><label for="aprole">Position</label><select id="aprole" onchange="$('apdept').hidden = this.value !== 'hod'">
+        ${isDean ? `<option value="subdean">Sub-dean</option>` : ""}<option value="hod" ${isDean ? "" : "selected"}>HOD</option></select></div>
+      <div id="apdept" ${isDean ? "hidden" : ""}><label for="apd">Department (for HOD)</label>
+        <select id="apd">${(depts || []).map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join("")}</select></div>
+    </div><div class="actions"><button class="primary" onclick="appointLeader()">Appoint</button></div><p id="apmsg" role="status"></p></div>
+    <p class="muted">A Sub-dean can appoint HODs in the school. Only the administrator appoints a Dean.</p>`;
+}
+
+async function appointLeader() {
+  const role = $("aprole").value, dep = role === "hod" ? $("apd").value : null;
+  const { data, error } = await sb.rpc("appoint_leader", { p_login: $("apsel").value, p_role: role, p_school: window._leadSchool, p_dept: dep });
+  $("apmsg").className = error ? "err" : "ok";
+  $("apmsg").textContent = error ? error.message : data;
+  if (!error) loadOversight();
+}
+async function removeLeader(id) {
+  if (!confirm("Remove this position? The person keeps their lecturer account.")) return;
+  const { error } = await sb.rpc("remove_leader", { p_assignment: id });
+  if (error) flashMsg(error.message); else loadOversight();
+}
+async function loadLeadersAdmin() {
+  const el = $("leadadm"); if (!el) return;
+  const [ls, lc, sc, dp] = await Promise.all([sb.rpc("leaders_in_scope"), sb.rpc("lecturers_in_scope"), sb.from("schools").select("id,name").order("name"), sb.from("departments").select("id,name,school_id").not("school_id", "is", null).order("name")]);
+  const schools = sc.data || [], leaders = ls.data || [], deptsAll = dp.data || [];
+  const people = [...new Map((lc.data || []).filter(r => r.lecturer_id).map(r => [r.lecturer_id, r])).values()].sort((a, b) => cmpNo(a.login_id, b.login_id));
+  el.innerHTML = `<h2>Deans, Sub-deans and HODs</h2>` + (leaders.length
+      ? `<div class="panel wrap"><table>${leaders.map(l => `<tr><td>${LEAD_ROLE[l.role] || l.role}</td><td>${esc(l.full_name)}</td><td>${esc(l.school_name || "")}</td><td>${esc(l.dept_name || "")}</td>
+          <td><button class="danger" onclick="removeLeader('${l.assignment_id}')">Remove</button></td></tr>`).join("")}</table></div>`
+      : `<p class="muted">None appointed yet.</p>`) + `
+    <div class="panel" style="margin-top:8px"><div class="fields">
+      <div class="wide"><label for="adsel">Lecturer</label><select id="adsel">${people.length
+        ? people.map(r => `<option value="${esc(r.login_id)}">${esc(r.full_name)} (${esc(r.login_id)}) - ${esc(r.school_name || "")}</option>`).join("")
+        : `<option value="">No lecturers with courses yet</option>`}</select></div>
+      <div class="wide"><label for="adsc">School</label><select id="adsc">${schools.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join("")}</select></div>
+    </div><div class="actions"><button class="primary" onclick="appointDean()">Appoint Dean</button></div><p id="admsg2" role="status"></p></div><div class="panel" style="margin-top:8px"><strong>Reissue a lecturer's ID</strong><p class="muted">Use this for a lecturer who teaches a general course for another department. Their ID follows their home department. The old ID stops working, so tell the lecturer the new one.</p><div class="fields"><div class="wide"><label for="rilec">Lecturer</label><select id="rilec">${people.length ? people.map(r => `<option value="${r.lecturer_id}">${esc(r.full_name)} (${esc(r.login_id)})</option>`).join("") : `<option value="">No lecturers yet</option>`}</select></div><div class="wide"><label for="ridep">Home department</label><select id="ridep">${deptsAll.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join("")}</select></div></div><div class="actions"><button class="primary" onclick="reissueLecturer()">Reissue ID</button></div><p id="rimsg" role="status"></p></div>`;
+}
+async function reissueLecturer() {
+  const { data, error } = await sb.rpc("reissue_lecturer_id", { p_profile: $("rilec").value, p_dept: $("ridep").value });
+  $("rimsg").className = error ? "err" : "ok";
+  $("rimsg").textContent = error ? error.message : data;
+  if (!error) loadLeadersAdmin();
+}
+async function appointDean() {
+  const login = $("adsel") ? $("adsel").value : "", school = $("adsc") ? $("adsc").value : "";
+  if (!login || !school) { $("admsg2").className = "err"; $("admsg2").textContent = "Choose a lecturer and a school first."; flashMsg("Choose a lecturer and a school first."); return; }
+  try {
+    const { data, error } = await sb.rpc("appoint_leader", { p_login: login, p_role: "dean", p_school: school, p_dept: null });
+    const text = error ? error.message : data;
+    $("admsg2").className = error ? "err" : "ok"; $("admsg2").textContent = text;
+    flashMsg(text);
+    if (!error) loadLeadersAdmin();
+  } catch (e) {
+    $("admsg2").className = "err"; $("admsg2").textContent = "Could not appoint the Dean: " + (e && e.message ? e.message : e);
+  }
+}
+
+/* ---------- Administrator inbox: lecturer accounts with nothing left to do ---------- */
+async function loadInboxCount() {
+  const { data } = await sb.rpc("unused_lecturer_accounts");
+  const n = (data || []).length, s = $("inbcount"); if (s) s.textContent = n ? "(" + n + ")" : "";
+}
+async function loadInbox() {
+  const el = $("inb"); if (!el) return;
+  const { data, error } = await sb.rpc("unused_lecturer_accounts");
+  el.innerHTML = `<h2 style="margin-top:8px">Inbox</h2>
+    <p class="muted">Lecturer accounts that no longer have any course, never ran a session or marked attendance, and hold no leadership role. Deleting one cannot be undone.</p>`
+    + (error ? `<p class="err">${esc(error.message)}</p>`
+      : (data && data.length) ? `<div class="panel wrap"><table><tr><th>Name</th><th>DLAMS ID</th><th>Created</th><th></th></tr>${data.map(u =>
+          `<tr><td>${esc(u.full_name)}</td><td>${esc(u.login_id)}</td><td>${new Date(u.created_at).toLocaleDateString("en-GB")}</td>
+           <td><button class="danger" onclick="deleteLecturer('${u.profile_id}')">Delete account</button></td></tr>`).join("")}</table></div>`
+      : `<p class="panel">Nothing to clear.</p>`);
+  loadInboxCount();
+}
+async function deleteLecturer(id) {
+  if (!confirm("Delete this lecturer account permanently?")) return;
+  const { error } = await sb.rpc("delete_lecturer_account", { p_profile: id });
+  if (error) flashMsg(error.message);
+  loadInbox();
+}
+
+/* Approve a waiting or denied student from any list; the lists refresh afterwards */
+async function approveAny(id) {
+  const { error } = await sb.rpc("approve_student", { p_student: id });
+  flashMsg(error ? error.message : "Student approved. They can now see their courses.");
+  if (me.hoc) loadPending();
+  if (isAdmin()) loadAdmin();
+}
+
+/* Messages show at the top of the page and fade after a few seconds */
+function flashMsg(msg) {
+  const app = $("app"); if (!app) return;
+  const b = document.createElement("div"); b.className = "panel"; b.setAttribute("role", "status");
+  b.style.cssText = "margin:8px 0;white-space:pre-line;border-color:var(--accent)";
+  b.textContent = msg; app.insertBefore(b, app.firstChild);
+  setTimeout(() => b.remove(), 8000);
+}
+
+/* Shows the appointment messages (Dean, Sub-dean, HOD) once, then marks them read */
+async function loadRoleBanners() {
+  const { data } = await sb.from("notifications").select("id,message").eq("profile_id", me.prof.id)
+    .eq("kind", "role_assigned").is("read_at", null).order("created_at");
+  for (const n of (data || [])) {
+    flashMsg(n.message);
+    await sb.rpc("mark_notification_read", { p_id: n.id });
+  }
+}
+
+/* Who appointed the signed-in person */
+async function loadAppointedBy() {
+  const { data } = await sb.rpc("my_appointed_by");
+  if (!data || $("appby")) return;
+  const b = document.createElement("p"); b.id = "appby"; b.className = "muted"; b.textContent = "Appointed by " + data;
+  const app = $("app"); app.insertBefore(b, app.children[1] || null);
+}
+
+/* ---------- Start ---------- */
+(async () => {
+  if (SUPABASE_URL.startsWith("PASTE")) { show(`<p class="panel">This app is not connected yet. Add the Supabase URL and key at the top of the file.</p>`); return; }
+  const { data: { session } } = await sb.auth.getSession();
+  session ? loadMe() : renderLogin();
+})();
+</script>
+</body>
+</html>
