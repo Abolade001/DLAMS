@@ -277,7 +277,17 @@ function renderHoc() {
       <section id="sec-students"><div id="sedit"></div><div id="pend"></div><div id="cls"></div><div id="xtra"></div><div id="dept"></div></section>
       <section id="sec-courses">${main ? `<h2 style="margin-top:8px">Add courses</h2>
         <div class="panel">
-          <label for="mode">Study mode</label>
+          <label for="cat">Type of course</label>
+      <select id="cat" onchange="catChanged()"><option value="dep">Departmental course</option><option value="gen">General course</option></select>
+      <div id="genbox" hidden>
+        <p class="muted">General courses are hosted by one school and department. The administrator sets which departments host them.</p>
+        <div class="fields">
+          <div><label for="gsch">Hosting school</label><select id="gsch" onchange="genSchool()"></select></div>
+          <div><label for="gdep">Hosting department</label><select id="gdep" onchange="genDeptCheck()"></select></div>
+        </div>
+        <p id="genhint" class="muted" role="status"></p>
+      </div>
+      <label for="mode">Study mode</label>
           <select id="mode" onchange="mode=this.value">
             ${Object.entries(MODES).map(([k, v]) => `<option value="${k}" ${k === mode ? "selected" : ""}>${v}</option>`).join("")}
           </select>
@@ -288,7 +298,7 @@ function renderHoc() {
         </div>` : ""}
         <div id="editbox"></div><h2>Courses in your class</h2><div id="saved"></div></section>
       <section id="sec-assistants"><div id="asst"></div></section>
-      <section id="sec-records"><div id="rec"></div><div id="prt"></div></section>
+      <section id="sec-records"><div id="rec"></div><div id="late"></div><div id="prt"></div></section>
       <section id="sec-admin"><div id="adm"></div></section>
       <section id="sec-inbox"><div id="inb"></div></section>
     </div></div>`;
@@ -327,24 +337,25 @@ async function saveLines() {
   const msg = $("msg"); msg.className = ""; msg.textContent = "";
   const todo = lines.map((l, i) => [l, i]).filter(([l]) => l.code || l.title || l.name || l.lid);
   if (!todo.length) { msg.className = "err"; msg.textContent = "Fill in at least one course line."; return; }
+  const gen = $("cat") && $("cat").value === "gen";
+  const host = gen ? $("gdep").value : null;
+  if (gen && (!host || !window._gen || !window._gen.hosts.has(host))) {
+    msg.className = "err"; msg.textContent = "Choose a hosting school and a department that hosts general courses."; return;
+  }
   $("save").disabled = true;
   const fails = [], notes = []; let ok = 0;
   for (const [l, i] of todo) {
-    const { data: ad, error } = await sb.rpc("add_course", { p_class: me.hoc.class_profile_id, p_mode: mode, p_audience: l.aud || "all",
-      p_code: l.code, p_title: l.title, p_lecturer_name: l.name, p_lecturer_id: l.lid.trim() || null });
-    if (error) { fails.push("Line " + (i + 1) + ": " + error.message); continue; }
+    const r = gen
+      ? await sb.rpc("add_general_course", { p_class: me.hoc.class_profile_id, p_mode: mode, p_audience: l.aud || "all", p_code: l.code, p_title: l.title, p_host: host })
+      : await sb.rpc("add_course", { p_class: me.hoc.class_profile_id, p_mode: mode, p_audience: l.aud || "all", p_code: l.code, p_title: l.title, p_lecturer_name: l.name, p_lecturer_id: l.lid.trim() || null });
+    if (r.error) { fails.push("Line " + (i + 1) + ": " + r.error.message); continue; }
     l.done = true; ok++;
-    if (ad && ad.lecturer_created) notes.push(`<strong>${esc(l.name)}</strong> - DLAMS ID <strong>${esc(ad.lecturer_id)}</strong>, temporary password <strong>${esc(ad.temp_password)}</strong>`);
+    if (!gen && r.data && r.data.note) notes.push(esc(l.code) + ": " + esc(r.data.note));
   }
   lines = lines.filter(l => !l.done); if (!lines.length) lines = [blank()];
   drawLines(); $("save").disabled = false;
   msg.className = fails.length ? "err" : "ok";
-  msg.innerHTML = (ok ? `Saved ${ok} course${ok > 1 ? "s" : ""}. ` : "") + fails.map(esc).join("<br>");
-  if (notes.length) {
-    const box = document.createElement("div"); box.className = "panel"; box.style.marginTop = "10px";
-    box.innerHTML = `<p class="err"><strong>Strict warning:</strong> give these to the lecturer only, in person. Do not share them with anyone else. The lecturer must choose a new password at first sign-in.</p>` + notes.map(n => `<p>${n}</p>`).join("");
-    msg.after(box);
-  }
+  msg.innerHTML = (ok ? `Saved ${ok} course${ok > 1 ? "s" : ""}. ` : "") + fails.map(esc).join("<br>") + (notes.length ? "<br>" + notes.join("<br>") : "");
   loadSaved();
 }
 
@@ -473,6 +484,18 @@ async function doRegister(e) {
   if (pw !== $("rpw2").value) return fail("The two passwords do not match.");
   if (pw.length < 6) return fail("Use a password of at least 6 characters.");
   if (!S.dept) return fail("Choose your department. If none is listed for this school, ask the administrator.");
+  const mode = $("rmode").value, route = $("rroute").value;
+  if (mode === "degree") {
+    const utme = /^EDUC[0-9]{7}$/.test(id), de = /^EDUC[0-9]{2}02[0-9]{5}$/.test(id);
+    if (!utme && !de) return fail("A degree matric number must look like EDUC2510212 (UTME) or EDUC250210001 (Direct Entry). Check it and try again.");
+    if (route === "utme" && !utme) return fail("You chose UTME, but this matric number has the Direct Entry pattern (EDUC + year + 02 + ...). Check how you were admitted or the matric number.");
+    if (route === "direct_entry" && !de) return fail("You chose Direct Entry, but this matric number has the UTME pattern. Check how you were admitted or the matric number.");
+    const admitted = (+String(S.sess).split("/")[0] - (S.level / 100 - 1)) % 100;
+    if (+id.slice(4, 6) !== admitted) {
+      const ok = confirm("Your matric number shows admission year 20" + id.slice(4, 6) + ", but you chose " + S.sess + ", " + S.level + " Level, which points to 20" + String(admitted).padStart(2, "0") + ". Continue anyway?");
+      if (!ok) return fail("Please check your matric number, session and level, then try again.");
+    }
+  }
   $("rgo").disabled = true; $("rerr").textContent = "";
   const email = loginEmail(id).replace("@", "." + Math.random().toString(36).slice(2, 8) + "@");
   const { data, error } = await sb.auth.signUp({ email, password: pw });
@@ -923,6 +946,7 @@ async function loadRecords() {
     (a || []).forEach(x => { cnt[x.session_id] = (cnt[x.session_id] || 0) + 1; });
   }
   window._rec = { rows, cnt };
+  loadLatePanel();
   el.innerHTML = `<h2 style="margin-top:8px">Lecture records</h2>` + (rows.length
     ? `<div class="panel wrap"><table><tr><th>Course</th><th>Lecture</th><th>Date</th><th>Status</th><th>Present</th>${isMain() ? "<th></th>" : ""}</tr>${rows.map(r =>
         `<tr><td>${esc(r.courses && r.courses.course_code)}</td><td>${esc(r.label)}</td><td>${new Date(r.activated_at || r.created_at).toLocaleDateString("en-GB")}</td>
@@ -1369,6 +1393,7 @@ async function loadOversight() {
         ${byDept[d] ? "" : `<p class="muted" style="margin-left:14px">No courses have been added yet.</p>`}${Object.values(byDept[d] || {}).sort((a, b) => cmpNo(a.login, b.login)).map(L => `<div style="margin:8px 0 8px 14px"><strong>${esc(L.name)}</strong> <span class="muted">${esc(L.login)}</span><br>${L.courses.map(c => esc(c)).join("<br>")}</div>`).join("")}
       </details>`).join("") : `<p class="panel">No lecturers have been given courses yet.</p>`}`;
   loadAppointForm(lect);
+  loadStaffTools();
 }
 
 async function loadAppointForm(lect) {
@@ -1416,6 +1441,7 @@ async function loadLeadersAdmin() {
         : `<option value="">No lecturers with courses yet</option>`}</select></div>
       <div class="wide"><label for="adsc">School</label><select id="adsc">${schools.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join("")}</select></div>
     </div><div class="actions"><button class="primary" onclick="appointDean()">Appoint Dean</button></div><p id="admsg2" role="status"></p></div><div class="panel" style="margin-top:8px"><strong>Reissue a lecturer's ID</strong><p class="muted">Use this for a lecturer who teaches a general course for another department. Their ID follows their home department. The old ID stops working, so tell the lecturer the new one.</p><div class="fields"><div class="wide"><label for="rilec">Lecturer</label><select id="rilec">${people.length ? people.map(r => `<option value="${r.lecturer_id}">${esc(r.full_name)} (${esc(r.login_id)})</option>`).join("") : `<option value="">No lecturers yet</option>`}</select></div><div class="wide"><label for="ridep">Home department</label><select id="ridep">${deptsAll.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join("")}</select></div></div><div class="actions"><button class="primary" onclick="reissueLecturer()">Reissue ID</button></div><p id="rimsg" role="status"></p></div>`;
+  loadStaffTools();
 }
 async function reissueLecturer() {
   const { data, error } = await sb.rpc("reissue_lecturer_id", { p_profile: $("rilec").value, p_dept: $("ridep").value });
@@ -1461,12 +1487,131 @@ async function deleteLecturer(id) {
   loadInbox();
 }
 
+/* General courses: the school, then the department, with hints and clear messages */
+async function catChanged() {
+  $("genbox").hidden = $("cat").value !== "gen";
+  if (!$("genbox").hidden) await loadGenHosts();
+}
+async function loadGenHosts() {
+  const [sc, dp, gh] = await Promise.all([
+    sb.from("schools").select("id,name").order("name"),
+    sb.from("departments").select("id,name,school_id").order("name"),
+    sb.from("general_hosts").select("department_id")]);
+  window._gen = { schools: sc.data || [], depts: dp.data || [], hosts: new Set((gh.data || []).map(x => x.department_id)) };
+  $("gsch").innerHTML = `<option value="">Choose a school</option>` + window._gen.schools.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join("");
+  genSchool();
+}
+function genSchool() {
+  const G = window._gen, sid = $("gsch").value, sname = (G.schools.find(s => s.id === sid) || {}).name || "";
+  const deps = G.depts.filter(d => d.school_id === sid);
+  $("gdep").innerHTML = !sid ? `<option value="">Choose a school first</option>` : deps.length ? deps.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join("") : `<option value="">No department in this school</option>`;
+  const hosting = deps.some(d => G.hosts.has(d.id));
+  $("genhint").textContent = !sid ? "" : !hosting ? "No general course is hosted by this school." :
+    (/Education/.test(sname) ? "Hint: School of Education usually hosts general courses. Choose it, then Educational Foundation." : "");
+  genDeptCheck();
+}
+function genDeptCheck() {
+  const G = window._gen, did = $("gdep").value; if (!G || !did) return;
+  if (!G.hosts.has(did)) { $("genhint").textContent = "This department hosts no general courses. Choose the department that hosts them."; return; }
+  $("genhint").textContent = "This department hosts general courses.";
+}
+
+/* Lecturers and course allocation, for the Dean, Sub-dean, HOD and administrator */
+async function loadStaffTools() {
+  const host = (me.staff && $("sec-oversight")) ? $("sec-oversight") : $("leadadm");
+  if (!host) return;
+  let t = $("stafftools"); if (!t) { t = document.createElement("div"); t.id = "stafftools"; host.appendChild(t); }
+  const [dp, st, oc, sc] = await Promise.all([sb.rpc("my_scope_departments"), sb.rpc("staff_in_scope"), sb.rpc("oversight_courses"), sb.from("schools").select("id,name").order("name")]);
+  const depts = dp.data || [], staff = st.data || [], courses = oc.data || [], schools = sc.data || [];
+  const admin = isAdmin(), canDept = admin || me.roles.some(r => ["dean", "subdean"].includes(r.role));
+  const deptOpts = depts.map(d => `<option value="${d.dept_id}">${esc(d.school_name)} - ${esc(d.dept_name)}</option>`).join("");
+  const staffOpts = staff.map(x => `<option value="${esc(x.login_id)}">${esc(x.full_name)} (${esc(x.login_id)})</option>`).join("");
+  let hostBox = "";
+  if (admin) {
+    const gh = await sb.from("general_hosts").select("department_id");
+    const hosts = new Set((gh.data || []).map(x => x.department_id));
+    hostBox = `<div class="panel"><strong>Departments that host general courses</strong>
+      ${depts.map(d => `<label class="check"><input type="checkbox" ${hosts.has(d.dept_id) ? "checked" : ""} onchange="toolHost('${d.dept_id}', this.checked)"> ${esc(d.school_name)} - ${esc(d.dept_name)}</label>`).join("")}</div>`;
+  }
+  t.innerHTML = `<h2 style="margin-top:8px">Lecturers and course allocation</h2>
+    <p class="muted">${staff.length} lecturer${staff.length === 1 ? "" : "s"} and ${courses.length} course${courses.length === 1 ? "" : "s"} in your scope.</p>
+    <div class="panel"><strong>Add a lecturer</strong><div class="fields">
+      <div class="wide"><label for="tl-n">Full name</label><input id="tl-n"></div>
+      <div class="wide"><label for="tl-d">Department</label><select id="tl-d">${deptOpts}</select></div></div>
+      <div class="actions"><button class="primary" onclick="toolAddLecturer()">Add lecturer</button></div><p id="tl-m" role="status"></p></div>
+    ${canDept ? `<div class="panel"><strong>Add a department</strong><div class="fields">
+      ${admin ? `<div class="wide"><label for="td-s">School</label><select id="td-s">${schools.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join("")}</select></div>` : ""}
+      <div class="wide"><label for="td-n">Department name</label><input id="td-n"></div>
+      <div><label for="td-c">Code (2 to 4 letters)</label><input id="td-c" maxlength="4"></div></div>
+      <div class="actions"><button class="primary" onclick="toolAddDept()">Add department</button></div><p id="td-m" role="status"></p></div>` : ""}
+    ${hostBox}
+    <h2>Allocate courses</h2>
+    ${courses.length ? courses.map(c => `<div style="padding:8px 0;border-top:1px solid var(--line)">
+      <strong>${esc(c.course_code)}</strong> ${esc(c.course_title)}
+      <span class="muted">${esc(c.dept_name || "")} &middot; ${MODES[c.study_mode] || ""} &middot; ${AUDS[c.audience] || ""}${c.host_dept ? " &middot; hosted by " + esc(c.host_dept) : ""}</span><br>
+      <span class="muted">Now: ${esc(c.lecturer_name)}</span>
+      <div class="actions"><select id="al-${c.course_id}"><option value="">Choose a lecturer</option>${staffOpts}</select>
+      <button onclick="toolAllocate('${c.course_id}')">Allocate</button></div></div>`).join("")
+      : `<p class="panel">No courses in your scope yet.</p>`}`;
+}
+async function toolAddLecturer() {
+  const r = await sb.rpc("create_lecturer_for", { p_name: $("tl-n").value, p_dept: $("tl-d").value });
+  if (r.error) { $("tl-m").className = "err"; $("tl-m").textContent = r.error.message; return; }
+  flashMsg("Lecturer added: " + r.data.name + ". DLAMS ID " + r.data.lecturer_id + ". Temporary password " + r.data.temp_password + ". Give these to the lecturer in person. They must change the password at first sign-in.");
+  loadStaffTools();
+}
+async function toolAddDept() {
+  const school = isAdmin() ? $("td-s").value : window._leadSchool;
+  const r = await sb.rpc("add_department_profile", { p_school: school, p_name: $("td-n").value, p_code: $("td-c").value });
+  if (r.error) { $("td-m").className = "err"; $("td-m").textContent = r.error.message; return; }
+  flashMsg("Department added.");
+  loadStaffTools();
+}
+async function toolAllocate(cid) {
+  const login = $("al-" + cid).value;
+  if (!login) { flashMsg("Choose a lecturer first."); return; }
+  const r = await sb.rpc("allocate_course", { p_course: cid, p_login: login });
+  flashMsg(r.error ? r.error.message : r.data);
+  if (!r.error) loadStaffTools();
+}
+async function toolHost(did, on) {
+  const r = await sb.rpc("set_general_host", { p_dept: did, p_on: on });
+  flashMsg(r.error ? r.error.message : (on ? "This department now hosts general courses." : "This department no longer hosts general courses."));
+}
+
 /* Approve a waiting or denied student from any list; the lists refresh afterwards */
 async function approveAny(id) {
   const { error } = await sb.rpc("approve_student", { p_student: id });
   flashMsg(error ? error.message : "Student approved. They can now see their courses.");
   if (me.hoc) loadPending();
   if (isAdmin()) loadAdmin();
+}
+
+/* Mark a student present for a past lecture, for students who registered after it was held */
+async function loadLatePanel() {
+  const el = $("late"); if (!el) return;
+  const fin = (window._rec && window._rec.rows || []).filter(r => r.status === "finalised");
+  if (!isMain() || !fin.length) { el.innerHTML = ""; return; }
+  el.innerHTML = `<h2>Mark a late student present</h2><div class="panel">
+    <p class="muted">For a student who registered after a lecture was held. Only students approved after that lecture appear here.</p>
+    <label for="lsess">Past lecture</label><select id="lsess" onchange="loadLateList(this.value)">${fin.map(r =>
+      `<option value="${r.id}">${esc(r.courses && r.courses.course_code)} - ${esc(r.label)} (${new Date(r.activated_at || r.created_at).toLocaleDateString("en-GB")})</option>`).join("")}</select>
+    <div id="lalist" style="margin-top:8px"></div></div>`;
+  loadLateList(fin[0].id);
+}
+async function loadLateList(sid) {
+  const box = $("lalist"); if (!box) return;
+  const { data, error } = await sb.rpc("late_candidates", { p_session: sid });
+  if (error) { box.innerHTML = `<p class="err">${esc(error.message)}</p>`; return; }
+  const rows = (data || []).sort((a, b) => cmpNo(a.login_id, b.login_id));
+  box.innerHTML = rows.length ? `<table>${rows.map(p => `<tr><td>${esc(p.full_name)}</td><td>${esc(p.login_id)}</td>
+    <td><button class="primary" onclick="markLate('${sid}', '${p.student_id}')">Mark present</button></td></tr>`).join("")}</table>`
+    : `<p class="muted">No students registered after this lecture are waiting to be marked.</p>`;
+}
+async function markLate(sid, pid) {
+  const { error } = await sb.rpc("mark_past_attendance", { p_session: sid, p_student: pid });
+  flashMsg(error ? error.message : "Marked present for that lecture. The register and percentages are updated.");
+  loadLateList(sid);
 }
 
 /* Messages show at the top of the page and fade after a few seconds */
