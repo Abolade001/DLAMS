@@ -1247,7 +1247,7 @@ async function loadStaffCourses() {
     : window._myCourses.length ? `<div class="panel wrap"><table><tr><th>Code</th><th>Title</th><th>Department</th><th>Status</th></tr>${window._myCourses.map(c =>
         `<tr><td>${esc(c.course_code)}</td><td>${esc(c.course_title)}</td><td>${cos(c)}</td><td>${c.lecturer_flagged_at ? '<span class="flag">Flagged</span>' : "Assigned"}</td></tr>`).join("")}</table></div>`
     : `<p class="panel">No courses have been assigned to you yet. The HOC/CG of the class assigns them.</p>`);
-  drawStaffCreate(); loadRegisters(); startSessions();
+  drawStaffCreate(); loadRegisters(); startSessions(); loadCourseEditor();
 }
 
 function drawStaffCreate() {
@@ -1381,8 +1381,14 @@ async function loadOversight() {
     const k = r.dept_name || "No department";
     byDept[k] = byDept[k] || {};
     const key = r.lecturer_id || ("n:" + r.full_name);
-    const L = byDept[k][key] = byDept[k][key] || { name: r.full_name, login: r.login_id, courses: [] };
+    const L = byDept[k][key] = byDept[k][key] || { name: r.full_name, login: r.login_id, courses: [], id: key };
     L.courses.push(r.course_code + " - " + r.course_title);
+  });
+  const sf = await sb.rpc("staff_in_scope");
+  (sf.data || []).forEach(x => {
+    const k = x.dept_name || "No department";
+    byDept[k] = byDept[k] || {};
+    byDept[k][x.profile_id] = byDept[k][x.profile_id] || { name: x.full_name, login: x.login_id, courses: [], id: x.profile_id };
   });
   const depts = [...new Set([...Object.keys(byDept), ...((dl.data || []).map(d => d.name))])].sort();
   el.innerHTML = `<h2 style="margin-top:8px">${esc(school) || "Your school"}</h2>
@@ -1390,7 +1396,7 @@ async function loadOversight() {
     ${hods.length ? `<p class="muted">HOD: ${hods.map(h => esc(h.full_name) + " (" + esc(h.dept_name || "") + ")").join(", ")}</p>` : ""}
     <h2>Lecturers and their courses</h2>
     ${depts.length ? depts.map(d => `<details class="dd"><summary>${esc(d)}</summary>
-        ${byDept[d] ? "" : `<p class="muted" style="margin-left:14px">No courses have been added yet.</p>`}${Object.values(byDept[d] || {}).sort((a, b) => cmpNo(a.login, b.login)).map(L => `<div style="margin:8px 0 8px 14px"><strong>${esc(L.name)}</strong> <span class="muted">${esc(L.login)}</span><br>${L.courses.map(c => esc(c)).join("<br>")}</div>`).join("")}
+        ${byDept[d] ? "" : `<p class="muted" style="margin-left:14px">No courses have been added yet.</p>`}${Object.values(byDept[d] || {}).sort((a, b) => cmpNo(a.login, b.login)).map(L => `<div style="margin:8px 0 8px 14px"><strong>${esc(L.name)}</strong> <span class="muted">${esc(L.login)}</span> <button class="danger" onclick="deleteStaff('${L.id}')">Delete</button><br>${L.courses.length ? L.courses.map(c => esc(c)).join("<br>") : "<span class='muted'>No courses this semester</span>"}</div>`).join("")}
       </details>`).join("") : `<p class="panel">No lecturers have been given courses yet.</p>`}`;
   loadAppointForm(lect);
   loadStaffTools();
@@ -1577,6 +1583,39 @@ async function toolAllocate(cid) {
 async function toolHost(did, on) {
   const r = await sb.rpc("set_general_host", { p_dept: did, p_on: on });
   flashMsg(r.error ? r.error.message : (on ? "This department now hosts general courses." : "This department no longer hosts general courses."));
+}
+
+/* A lecturer corrects the code and title of the courses they teach */
+function loadCourseEditor() {
+  const box = $("sec-courses"); if (!box) return;
+  const old = $("courseedit"); if (old) old.remove();
+  const cs = window._myCourses || []; if (!cs.length) return;
+  const el = document.createElement("div"); el.id = "courseedit";
+  el.innerHTML = `<h2>Correct a course I teach</h2><div class="panel"><label for="ce-c">Course</label>
+    <select id="ce-c" onchange="pickEditCourse(this.value)">${cs.map(c => `<option value="${c.id}">${esc(c.course_code)} - ${esc(c.course_title)}</option>`).join("")}</select>
+    <div class="fields" style="margin-top:8px"><div><label for="ce-code">Course code</label><input id="ce-code"></div>
+    <div class="wide"><label for="ce-title">Course title</label><input id="ce-title"></div></div>
+    <div class="actions"><button class="primary" onclick="saveOwnCourse()">Save correction</button></div><p id="ce-m" role="status"></p></div>`;
+  box.appendChild(el);
+  pickEditCourse(cs[0].id);
+}
+function pickEditCourse(id) {
+  const c = (window._myCourses || []).find(x => x.id === id); if (!c) return;
+  $("ce-code").value = c.course_code; $("ce-title").value = c.course_title;
+}
+async function saveOwnCourse() {
+  const { data, error } = await sb.rpc("lecturer_update_course", { p_course: $("ce-c").value, p_code: $("ce-code").value, p_title: $("ce-title").value });
+  $("ce-m").className = error ? "err" : "ok";
+  $("ce-m").textContent = error ? error.message : data;
+  if (!error) loadStaffCourses();
+}
+
+/* Delete a lecturer account (for example a Sub-dean or HOD who is not teaching this semester) */
+async function deleteStaff(id) {
+  if (!confirm("Delete this lecturer account? Their courses become Unconfirmed. This cannot be undone.")) return;
+  const { data, error } = await sb.rpc("delete_staff_account", { p_profile: id });
+  flashMsg(error ? error.message : data);
+  if (!error) loadOversight();
 }
 
 /* Approve a waiting or denied student from any list; the lists refresh afterwards */
