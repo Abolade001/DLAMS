@@ -39,6 +39,9 @@
   th, td { text-align:left; padding:5px 6px; border-top:1px solid var(--line); vertical-align:top; }
   th { color:var(--muted); font-weight:600; }
   .wrap { overflow-x:auto; }
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px}
+  .card b{font-size:1.5rem;display:block}
   details.dd { margin:14px 0; } details.dd > summary { font-size:1.12rem; font-weight:700; cursor:pointer; margin:6px 0 8px; list-style:revert; }
   details.dd > summary::marker { color:var(--accent); }
   button.danger { color:var(--bad); border-color:var(--bad); }
@@ -123,7 +126,7 @@ async function doLogin(e) {
   await loadMe();
 }
 
-async function signOut() { stopTimers(); await sb.auth.signOut(); me = null; renderLogin(); }
+async function signOut() { stopTimers(); await sb.auth.signOut(); me = null; const w = $("chatw"); if (w) w.remove(); renderLogin(); }
 
 /* ---------- Load the signed-in person ---------- */
 async function loadMe() {
@@ -139,6 +142,8 @@ async function loadMe() {
   me = { prof, roles: roles || [], hoc, cls, staff: prof.account_type === "staff" };
   tab = me.hoc ? "hoc" : "student";
   lines = [blank()];
+  if (me.roles.some(r => r.role === "admin")) { renderAdminDash(); return; }
+  ensureChatWidget();
   if (me.staff) { renderStaff(); return; }
   pendingToken ? renderScan() : renderHome();
 }
@@ -974,6 +979,7 @@ async function restartCourse() {
 /* ---------- Administrator: classes, main HOC/CGs, waiting students ---------- */
 const isAdmin = () => !!me && me.roles.some(r => r.role === "admin");
 async function loadAdmin() {
+  if ($("admsec")) { await admLoad(); return admSec(window._admSec || "sch"); }
   const el = $("adm"); if (!el) return;
   const [sc, dp, cp, ro, pd, st, se, ls] = await Promise.all([
     sb.from("schools").select("id,name,acronym").order("name"),
@@ -1405,9 +1411,10 @@ async function loadOversight() {
 async function loadAppointForm(lect) {
   const el = $("sec-appoint"); if (!el) return;
   const isDean = me.roles.some(r => r.role === "dean");
-  const { data: depts } = window._leadSchool
-    ? await sb.from("departments").select("id,name").eq("school_id", window._leadSchool).order("name") : { data: [] };
-  const people = [...new Map((lect || []).filter(r => r.lecturer_id).map(r => [r.lecturer_id, r])).values()].sort((a, b) => cmpNo(a.login_id, b.login_id));
+  const [dres, sf] = await Promise.all([
+    window._leadSchool ? sb.from("departments").select("id,name").eq("school_id", window._leadSchool).order("name") : Promise.resolve({ data: [] }),
+    sb.rpc("staff_in_scope")]);
+  const people = (sf.data || []).slice().sort((a, b) => cmpNo(a.login_id, b.login_id));
   el.innerHTML = `<h2 style="margin-top:8px">Appoint a leader</h2><div class="panel"><div class="fields">
       <div class="wide"><label for="apsel">Lecturer</label><select id="apsel">${people.length
         ? people.map(r => `<option value="${esc(r.login_id)}">${esc(r.full_name)} (${esc(r.login_id)})</option>`).join("")
@@ -1415,9 +1422,9 @@ async function loadAppointForm(lect) {
       <div><label for="aprole">Position</label><select id="aprole" onchange="$('apdept').hidden = this.value !== 'hod'">
         ${isDean ? `<option value="subdean">Sub-dean</option>` : ""}<option value="hod" ${isDean ? "" : "selected"}>HOD</option></select></div>
       <div id="apdept" ${isDean ? "hidden" : ""}><label for="apd">Department (for HOD)</label>
-        <select id="apd">${(depts || []).map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join("")}</select></div>
+        <select id="apd">${(dres.data || []).map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join("")}</select></div>
     </div><div class="actions"><button class="primary" onclick="appointLeader()">Appoint</button></div><p id="apmsg" role="status"></p></div>
-    <p class="muted">A Sub-dean can appoint HODs in the school. Only the administrator appoints a Dean.</p>`;
+    <p class="muted">If a lecturer is missing from this list, their home department is not in your school. Ask the administrator to set it.</p>`;
 }
 
 async function appointLeader() {
@@ -1527,7 +1534,7 @@ async function loadStaffTools() {
   const host = (me.staff && $("sec-oversight")) ? $("sec-oversight") : $("leadadm");
   if (!host) return;
   let t = $("stafftools"); if (!t) { t = document.createElement("div"); t.id = "stafftools"; host.appendChild(t); }
-  const [dp, st, oc, sc] = await Promise.all([sb.rpc("my_scope_departments"), sb.rpc("staff_in_scope"), sb.rpc("oversight_courses"), sb.from("schools").select("id,name").order("name")]);
+  const [dp, st, oc, sc] = await Promise.all([sb.rpc("my_scope_departments"), sb.rpc("staff_in_scope"), sb.rpc("allocatable_courses"), sb.from("schools").select("id,name").order("name")]);
   const depts = dp.data || [], staff = st.data || [], courses = oc.data || [], schools = sc.data || [];
   const admin = isAdmin(), canDept = admin || me.roles.some(r => ["dean", "subdean"].includes(r.role));
   const deptOpts = depts.map(d => `<option value="${d.dept_id}">${esc(d.school_name)} - ${esc(d.dept_name)}</option>`).join("");
@@ -1554,10 +1561,10 @@ async function loadStaffTools() {
     <h2>Allocate courses</h2>
     ${courses.length ? courses.map(c => `<div style="padding:8px 0;border-top:1px solid var(--line)">
       <strong>${esc(c.course_code)}</strong> ${esc(c.course_title)}
-      <span class="muted">${esc(c.dept_name || "")} &middot; ${MODES[c.study_mode] || ""} &middot; ${AUDS[c.audience] || ""}${c.host_dept ? " &middot; hosted by " + esc(c.host_dept) : ""}</span><br>
+      <span class="muted">${esc(c.class_label || "")} &middot; ${MODES[c.study_mode] || ""} &middot; ${AUDS[c.audience] || ""}${c.host_dept ? " &middot; hosted by " + esc(c.host_dept) : ""}</span><br>
       <span class="muted">Now: ${esc(c.lecturer_name)}</span>
       <div class="actions"><select id="al-${c.course_id}"><option value="">Choose a lecturer</option>${staffOpts}</select>
-      <button onclick="toolAllocate('${c.course_id}')">Allocate</button></div></div>`).join("")
+      <button onclick="toolAllocate('${c.course_id}')">Allocate</button> <span id="alm-${c.course_id}" class="muted"></span></div></div>`).join("")
       : `<p class="panel">No courses in your scope yet.</p>`}`;
 }
 async function toolAddLecturer() {
@@ -1574,11 +1581,12 @@ async function toolAddDept() {
   loadStaffTools();
 }
 async function toolAllocate(cid) {
-  const login = $("al-" + cid).value;
-  if (!login) { flashMsg("Choose a lecturer first."); return; }
+  const out = $("alm-" + cid), login = $("al-" + cid).value;
+  if (!login) { out.className = "err"; out.textContent = "Choose a lecturer first."; return; }
   const r = await sb.rpc("allocate_course", { p_course: cid, p_login: login });
-  flashMsg(r.error ? r.error.message : r.data);
-  if (!r.error) loadStaffTools();
+  if (r.error) { out.className = "err"; out.textContent = r.error.message; return; }
+  out.className = "ok"; out.textContent = r.data;
+  setTimeout(() => loadStaffTools(), 900);
 }
 async function toolHost(did, on) {
   const r = await sb.rpc("set_general_host", { p_dept: did, p_on: on });
@@ -1618,7 +1626,270 @@ async function deleteStaff(id) {
   if (!error) loadOversight();
 }
 
-/* Approve a waiting or denied student from any list; the lists refresh afterwards */
+/* Chat the administrator: a button at the lower left of every dashboard, with a limit on messages */
+function ensureChatWidget() {
+  if ($("chatw")) return;
+  const w = document.createElement("div"); w.id = "chatw";
+  w.style.cssText = "position:fixed;left:14px;bottom:14px;z-index:50;";
+  w.innerHTML = `<button id="chatbtn" aria-label="Chat the administrator" title="Chat the administrator" onclick="toggleChat()"
+      style="width:54px;height:54px;border-radius:50%;padding:0;font-size:1.4rem;box-shadow:0 2px 8px #0005">&#128172;</button>
+    <div class="muted" style="font-size:.72rem;margin-top:4px;width:120px;line-height:1.2">Chat the administrator</div>
+    <div id="chatpanel" hidden style="position:fixed;left:14px;bottom:100px;width:min(340px,92vw);max-height:62vh;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;box-shadow:0 4px 16px #0005"></div>`;
+  document.body.appendChild(w);
+}
+async function toggleChat() {
+  const p = $("chatpanel"); p.hidden = !p.hidden;
+  if (!p.hidden) await loadChat();
+}
+async function loadChat() {
+  const [mr, qr] = await Promise.all([sb.rpc("my_messages"), sb.rpc("my_message_quota")]);
+  const q = qr.data && qr.data[0], left = q ? q.limit_n - q.used : 0, msgs = mr.data || [];
+  $("chatpanel").innerHTML = `<strong>Messages to the administrator</strong>
+    <p class="muted" style="margin:4px 0">${left > 0 ? left + " message" + (left === 1 ? "" : "s") + " left" : "You have used all your messages."}</p>
+    <div style="max-height:34vh;overflow:auto;margin:6px 0">${msgs.length ? msgs.map(m => `<div style="margin:6px 0;${m.from_admin ? "" : "text-align:right"}">
+      <span class="flag">${m.from_admin ? "Administrator" : "You"}</span><br>${esc(m.body).replace(/\n/g, "<br>")}</div>`).join("") : `<p class="muted">No messages yet.</p>`}</div>
+    <textarea id="chattxt" rows="2" style="width:100%" ${left > 0 ? "" : "disabled"} placeholder="Write your question"></textarea>
+    <div class="actions"><button class="primary" ${left > 0 ? "" : "disabled"} onclick="sendChat()">Send</button></div>
+    <p id="chatmsg" role="status" class="muted"></p>`;
+}
+async function sendChat() {
+  const { error } = await sb.rpc("send_message", { p_body: $("chattxt").value });
+  if (error) { $("chatmsg").className = "err"; $("chatmsg").textContent = error.message; return; }
+  loadChat();
+}
+
+/* ---------- Administrator dashboard: a sidebar, one section at a time ---------- */
+const schoolOf = d => { const s = window._adm && window._adm.schools.find(x => x.id === d.school_id); return s ? s.name : ""; };
+function hocName(cid) {
+  const A = window._adm, r = (A.hocRoles || []).find(x => x.class_profile_id === cid);
+  const p = r && (A.hocNames || []).find(x => x.id === r.profile_id);
+  return p ? p.full_name + " (" + p.hoc_cg_id + ")" : "";
+}
+function admMsg(text, bad) {
+  const p = $("admmsg"); if (!p) { flashMsg(text); return; }
+  p.className = bad ? "err" : "ok"; p.style.whiteSpace = "pre-line"; p.textContent = text;
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+async function admLoad() {
+  const [sc, dp, cp, st, pd, ls, se, sf, un, gh, ib, hr] = await Promise.all([
+    sb.from("schools").select("id,name,acronym").order("name"),
+    sb.from("departments").select("id,name,code,school_id").order("name"),
+    sb.from("class_profiles").select("id,department_id,school_id,programme,level,session,semester").order("level"),
+    sb.from("profiles").select("id,login_id,full_name,phone,status,class_profile_id,admission_route,study_mode,current_level").eq("account_type", "student").order("login_id"),
+    sb.from("profiles").select("id").eq("status", "pending").eq("account_type", "student"),
+    sb.rpc("leaders_in_scope"),
+    sb.from("academic_sessions").select("label").order("label", { ascending: false }),
+    sb.rpc("staff_in_scope"), sb.rpc("unused_lecturer_accounts"),
+    sb.from("general_hosts").select("department_id"),
+    sb.rpc("admin_inbox"),
+    sb.from("role_assignments").select("profile_id,class_profile_id").eq("role", "hoc_cg").eq("slot", "main").eq("is_active", true)]);
+  const hocIds = (hr.data || []).map(r => r.profile_id);
+  const hn = hocIds.length ? await sb.from("profiles").select("id,full_name,hoc_cg_id").in("id", hocIds) : { data: [] };
+  window._adm = { schools: sc.data || [], depts: dp.data || [], classes: cp.data || [], students: st.data || [], pending: pd.data || [],
+    leaders: ls.data || [], sessions: (se.data || []).map(x => x.label), staff: sf.data || [], unused: un.data || [],
+    hosts: new Set((gh.data || []).map(x => x.department_id)), inbox: ib.data || [], hocRoles: hr.data || [], hocNames: hn.data || [] };
+}
+async function renderAdminDash() {
+  stopTimers();
+  show(`<div class="bar"><div><h1>${esc(me.prof.full_name)}</h1><p class="muted">Administrator &middot; ${esc(me.prof.login_id)}</p></div>
+    <div class="actions"><button onclick="renderHome()">My HOC/CG dashboard</button><button onclick="signOut()">Sign out</button></div></div>
+    <div class="shell"><nav class="side" aria-label="Administrator menu">
+      <button id="nv-over" onclick="admSec('over')">Overview</button>
+      <button id="nv-sch" onclick="admSec('sch')">Schools &amp; departments</button>
+      <button id="nv-staff" onclick="admSec('staff')">Staff</button>
+      <button id="nv-crs" onclick="admSec('crs')">Courses</button>
+      <button id="nv-stu" onclick="admSec('stu')">Students</button>
+      <button id="nv-msg" onclick="admSec('msg')">Messages</button>
+      <button id="nv-set" onclick="admSec('set')">Sessions &amp; settings</button></nav>
+    <div id="admmain"><p id="admmsg" role="status"></p><div id="admsec"></div></div></div>`);
+  $("app").className = "wide";
+  await admLoad();
+  admSec("over");
+}
+async function admSec(n) {
+  window._admSec = n;
+  document.querySelectorAll(".side button").forEach(b => b.setAttribute("aria-current", String(b.id === "nv-" + n)));
+  const m = $("admsec"); if (!m) return;
+  m.innerHTML = `<p class="muted">Loading…</p>`;
+  const fns = { over: admOverview, sch: admSchools, staff: admStaff, crs: admCourses, stu: admStudents, msg: admMessages, set: admSettings };
+  await fns[n](m);
+}
+function admOverview(m) {
+  const A = window._adm, unread = A.inbox.filter(x => x.admin_unread).length, active = A.students.filter(s => s.status === "active").length;
+  const card = (n, label, go) => `<div class="card" style="cursor:pointer" onclick="admSec('${go}')"><b>${n}</b>${label}</div>`;
+  m.innerHTML = `<h2>Overview</h2><div class="cards">
+    ${card(A.schools.length + " of 5", "Schools", "sch")}
+    ${card(A.depts.length, "Departments", "sch")}
+    ${card(A.staff.length, "Lecturers and leaders", "staff")}
+    ${card(active, "Approved students", "stu")}
+    ${card(A.pending.length, "Waiting for approval", "stu")}
+    ${card(unread, "Unread messages", "msg")}
+    ${card(A.unused.length, "Lecturers not in use", "staff")}</div>
+    <p class="muted" style="margin-top:12px">Choose a section on the left. Nothing opens until you choose it.</p>`;
+}
+function admSchools(m) {
+  const A = window._adm;
+  m.innerHTML = `<h2>Schools and departments</h2>
+    ${A.schools.length < 5
+      ? `<div class="panel"><div class="fields"><div class="wide"><label for="ns-n">New school</label><input id="ns-n" placeholder="For example: School of Science"></div></div>
+         <div class="actions"><button class="primary" onclick="admAddSchool()">Add school</button></div></div>`
+      : `<p class="muted">The five schools are set up.</p>`}
+    ${A.schools.map(s => {
+      const ds = A.depts.filter(d => d.school_id === s.id);
+      const dean = A.leaders.find(l => l.role === "dean" && l.school_name === s.name);
+      return `<details class="dd"><summary>${esc(s.name)} <span class="muted">Dean: ${dean ? esc(dean.full_name) : "not appointed"} &middot; ${ds.length} department${ds.length === 1 ? "" : "s"}</span></summary>
+        ${ds.map(d => {
+          const hod = A.leaders.find(l => l.role === "hod" && l.dept_name === d.name);
+          const cl = A.classes.filter(c => c.department_id === d.id);
+          return `<div style="margin:10px 0 10px 14px;padding-bottom:10px;border-bottom:1px solid var(--line)">
+            <strong>${esc(d.name)}</strong> <span class="muted">(${esc(d.code || "")}) &middot; HOD: ${hod ? esc(hod.full_name) : "not appointed"}</span>
+            <label class="check"><input type="checkbox" ${A.hosts.has(d.id) ? "checked" : ""} onchange="toolHost('${d.id}', this.checked)"> Hosts general courses</label>
+            ${cl.length ? cl.map(c => `<div class="muted" style="margin:4px 0 0 14px">${c.level} Level, ${esc(c.session)}, ${semLabel(c.semester)} &middot; HOC/CG: ${esc(hocName(c.id) || "none")}
+              <button onclick="pickHoc('${c.id}')">${hocName(c.id) ? "Change" : "Assign"}</button></div>`).join("")
+              : `<div class="muted" style="margin-left:14px">No students have registered yet.</div>`}
+          </div>`; }).join("") || `<p class="muted" style="margin-left:14px">No departments yet.</p>`}
+        <div class="panel" style="margin-top:8px"><div class="fields"><div class="wide"><label for="nd-${s.id}">New department in this school</label><input id="nd-${s.id}"></div>
+          <div><label for="nc-${s.id}">Code</label><input id="nc-${s.id}" maxlength="4"></div></div>
+          <div class="actions"><button class="primary" onclick="admAddDept('${s.id}')">Add department</button></div></div>
+      </details>`; }).join("")}
+    <div id="hocpick"></div>`;
+}
+function admStaff(m) {
+  const A = window._adm;
+  const deptOpts = A.depts.map(d => `<option value="${d.id}">${esc(schoolOf(d))} - ${esc(d.name)}</option>`).join("");
+  const staffOpts = A.staff.slice().sort((a, b) => cmpNo(a.login_id, b.login_id)).map(x => `<option value="${esc(x.login_id)}">${esc(x.full_name)} (${esc(x.login_id)})</option>`).join("");
+  m.innerHTML = `<h2>Add a lecturer</h2>
+    <div class="panel"><div class="fields"><div class="wide"><label for="sl-n">Full name</label><input id="sl-n"></div>
+      <div class="wide"><label for="sl-d">Department</label><select id="sl-d">${deptOpts}</select></div></div>
+      <div class="actions"><button class="primary" onclick="admAddLecturer()">Add lecturer</button></div>
+      <p class="muted">The lecturer gets a DLAMS ID and the temporary password 12345678. Give both in person.</p></div>
+    <h2>Appoint a Dean, Sub-dean or HOD</h2>
+    <div class="panel"><div class="fields">
+      <div class="wide"><label for="ap-l">Lecturer</label><select id="ap-l">${staffOpts}</select></div>
+      <div><label for="ap-r">Position</label><select id="ap-r" onchange="$('ap-d').hidden = this.value !== 'hod'">
+        <option value="dean">Dean</option><option value="subdean">Sub-dean</option><option value="hod">HOD</option></select></div>
+      <div><label for="ap-s">School</label><select id="ap-s">${A.schools.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join("")}</select></div>
+      <div id="ap-d" hidden class="wide"><label for="ap-dep">Department (for HOD)</label><select id="ap-dep">${deptOpts}</select></div></div>
+      <div class="actions"><button class="primary" onclick="admAppoint()">Appoint</button></div></div>
+    <h2>All lecturers and leaders</h2>
+    <div class="panel"><input id="sq" placeholder="Search by name or DLAMS ID" oninput="admStaffList()"><div id="sl-list" style="margin-top:8px"></div></div>
+    <h2>Lecturers not in use</h2>
+    ${A.unused.length ? `<div class="wrap"><table>${A.unused.map(u => `<tr><td>${esc(u.full_name)}</td><td>${esc(u.login_id)}</td>
+      <td><button class="danger" onclick="admDelStaff('${u.profile_id}')">Delete</button></td></tr>`).join("")}</table></div>` : `<p class="muted">Nothing to clear.</p>`}`;
+  admStaffList();
+}
+function admStaffList() {
+  const A = window._adm, q = ($("sq") ? $("sq").value : "").trim().toLowerCase();
+  const rows = A.staff.filter(x => !q || x.full_name.toLowerCase().includes(q) || x.login_id.toLowerCase().includes(q)).sort((a, b) => cmpNo(a.login_id, b.login_id));
+  $("sl-list").innerHTML = rows.length ? `<div class="wrap"><table><tr><th>Name</th><th>DLAMS ID</th><th>School</th><th>Department</th><th></th></tr>${rows.map(x =>
+    `<tr><td>${esc(x.full_name)}</td><td>${esc(x.login_id)}</td><td>${esc(x.school_name || "")}</td><td>${esc(x.dept_name || "")}</td>
+     <td style="white-space:nowrap"><select id="hd-${x.profile_id}"><option value="">Move to department...</option>${A.depts.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join("")}</select>
+     <button onclick="admSetHome('${x.profile_id}')">Set</button> <button class="danger" onclick="admDelStaff('${x.profile_id}')">Delete</button></td></tr>`).join("")}</table></div>`
+    : `<p class="muted">No lecturers found.</p>`;
+}
+async function admCourses(m) {
+  const A = window._adm;
+  const [alloc, cat, sf] = await Promise.all([sb.rpc("allocatable_courses"), sb.rpc("catalogue_list"), sb.rpc("staff_in_scope")]);
+  const staffOpts = (sf.data || []).slice().sort((a, b) => cmpNo(a.login_id, b.login_id)).map(x => `<option value="${esc(x.login_id)}">${esc(x.full_name)} (${esc(x.login_id)})</option>`).join("");
+  m.innerHTML = `<h2>Add a course</h2>
+    <div class="panel"><div class="fields">
+      <div class="wide"><label for="cc-d">Owning department</label><select id="cc-d">${A.depts.map(d => `<option value="${d.id}">${esc(schoolOf(d))} - ${esc(d.name)}</option>`).join("")}</select></div>
+      <div><label for="cc-c">Course code</label><input id="cc-c" maxlength="10" placeholder="ENT 211"></div>
+      <div class="wide"><label for="cc-t">Course title</label><input id="cc-t"></div></div>
+      <p class="muted">The owning department decides whether the course is general or departmental.</p>
+      <div class="actions"><button class="primary" onclick="admAddCourse()">Add course</button></div></div>
+    <h2>Allocate lecturers to courses</h2>
+    ${(alloc.data || []).length ? alloc.data.map(c => `<div style="padding:8px 0;border-top:1px solid var(--line)"><strong>${esc(c.course_code)}</strong> ${esc(c.course_title)}
+      <span class="muted">${esc(c.class_label)} &middot; hosted by ${esc(c.host_dept || "")} &middot; now: ${esc(c.lecturer_name)}</span>
+      <div class="actions"><select id="al-${c.course_id}"><option value="">Choose a lecturer</option>${staffOpts}</select>
+      <button onclick="admAllocate('${c.course_id}')">Allocate</button> <span id="alm-${c.course_id}" class="muted"></span></div></div>`).join("")
+      : `<p class="muted">No courses to allocate yet.</p>`}
+    <h2>Course catalogue</h2>
+    ${(cat.data || []).length ? `<div class="wrap"><table><tr><th>Code</th><th>Title</th><th>Owning department</th><th>Type</th></tr>${cat.data.map(c =>
+      `<tr><td>${esc(c.code)}</td><td>${esc(c.title)}</td><td>${esc(c.owner_dept || "")}</td><td>${c.is_general ? "General" : "Departmental"}</td></tr>`).join("")}</table></div>`
+      : `<p class="muted">The catalogue is empty.</p>`}`;
+}
+function admStudents(m) {
+  m.innerHTML = `<h2>Students</h2><div id="asSel" style="margin-bottom:10px"></div>
+    <input id="asq" placeholder="Search by name or matric number" oninput="admDrawList()">
+    <div id="asl" class="wrap" style="margin-top:10px"></div><div id="astu"></div>`;
+  drawAdmStudents();
+}
+async function admMessages(m) {
+  const A = window._adm, inbox = (await sb.rpc("admin_inbox")).data || [];
+  A.inbox = inbox;
+  const tree = {};
+  inbox.forEach(r => { const s = r.school_name || "No school", d = r.dept_name || "No department";
+    tree[s] = tree[s] || {}; (tree[s][d] = tree[s][d] || []).push(r); });
+  m.innerHTML = `<h2>Messages</h2>
+    <div style="display:grid;grid-template-columns:minmax(240px,1fr) 2fr;gap:16px;align-items:start">
+      <div>${A.schools.map(s => {
+        const sm = tree[s.name] || {}, all = [].concat(...Object.values(sm)), un = all.filter(x => x.admin_unread).length;
+        return `<details class="dd"><summary>${esc(s.name)} ${un ? `<span class="flag">${un} new</span>` : ""} <span class="muted">${all.length}</span></summary>
+          ${Object.keys(sm).sort().map(dn => { const list = sm[dn], u2 = list.filter(x => x.admin_unread).length;
+            return `<details class="dd" style="margin-left:12px"><summary>${esc(dn)} ${u2 ? `<span class="flag">${u2} new</span>` : ""} <span class="muted">${list.length}</span></summary>
+              ${list.map(x => `<div style="margin:4px 0 4px 12px"><button onclick="admOpenThread('${x.thread_id}')">${esc(x.sender_name)}${x.admin_unread ? " &#9679;" : ""}</button>
+                <span class="muted">${esc(x.sender_login)}</span></div>`).join("")}</details>`; }).join("")}</details>`; }).join("")}</div>
+      <div id="thr" class="panel"><p class="muted">Open a school, then a department, then a sender to read and reply.</p></div></div>`;
+}
+async function admOpenThread(id) {
+  const { data, error } = await sb.rpc("admin_thread", { p_thread: id });
+  if (error) { admMsg(error.message, true); return; }
+  const row = (window._adm.inbox || []).find(x => x.thread_id === id) || {};
+  $("thr").innerHTML = `<h2 style="margin-top:0">${esc(row.sender_name || "")} <span class="muted">${esc(row.sender_login || "")}</span></h2>
+    ${(data || []).map(x => `<div style="margin:6px 0;${x.from_admin ? "" : "text-align:right"}"><span class="flag">${x.from_admin ? "You" : "Sender"}</span><br>${esc(x.body).replace(/\n/g, "<br>")}<br><span class="muted">${new Date(x.created_at).toLocaleString("en-GB")}</span></div>`).join("") || `<p class="muted">No messages.</p>`}
+    <textarea id="rp" rows="3" style="width:100%" placeholder="Write your reply"></textarea>
+    <div class="actions"><button class="primary" onclick="admReply('${id}')">Send reply</button></div><p id="rpm" role="status"></p>`;
+}
+async function admReply(id) {
+  const { error } = await sb.rpc("admin_reply", { p_thread: id, p_body: $("rp").value });
+  if (error) { $("rpm").className = "err"; $("rpm").textContent = error.message; return; }
+  admOpenThread(id);
+}
+function admSettings(m) {
+  const A = window._adm;
+  m.innerHTML = `<h2>Academic sessions</h2><div class="panel"><p>${A.sessions.map(x => `<span class="flag" style="margin:2px">${x}</span>`).join(" ") || "None yet"}</p>
+    <div class="fields"><div><label for="ns-s">New session</label><input id="ns-s" placeholder="2027/2028"></div></div>
+    <div class="actions"><button class="primary" onclick="admAddSession()">Add session</button></div></div>
+    <h2>Message limits</h2><div class="panel"><p class="muted">Students, including HOC/CGs: 2 messages. Lecturers, HODs, Deans and Sub-deans: 5 messages.</p></div>`;
+}
+async function admAddSchool() { const r = await sb.rpc("add_school", { p_name: $("ns-n").value }); if (r.error) return admMsg(r.error.message, true); admMsg("School added."); await admLoad(); admSec("sch"); }
+async function admAddDept(sid) { const r = await sb.rpc("add_department_profile", { p_school: sid, p_name: $("nd-" + sid).value, p_code: $("nc-" + sid).value }); if (r.error) return admMsg(r.error.message, true); admMsg("Department added."); await admLoad(); admSec("sch"); }
+async function admAddCourse() { const r = await sb.rpc("add_catalogue_course", { p_dept: $("cc-d").value, p_code: $("cc-c").value, p_title: $("cc-t").value }); if (r.error) return admMsg(r.error.message, true); admMsg("Course added to the catalogue."); admSec("crs"); }
+async function admAllocate(cid) {
+  const out = $("alm-" + cid), login = $("al-" + cid).value;
+  if (!login) { out.className = "err"; out.textContent = "Choose a lecturer first."; return; }
+  const r = await sb.rpc("allocate_course", { p_course: cid, p_login: login });
+  if (r.error) { out.className = "err"; out.textContent = r.error.message; return; }
+  admMsg(r.data); admSec("crs");
+}
+async function admAddLecturer() {
+  const r = await sb.rpc("create_lecturer_for", { p_name: $("sl-n").value, p_dept: $("sl-d").value });
+  if (r.error) return admMsg(r.error.message, true);
+  admMsg("Lecturer added: " + r.data.name + ". DLAMS ID " + r.data.lecturer_id + ". Temporary password " + r.data.temp_password + ". Give these in person; the lecturer must change the password at first sign-in.");
+  await admLoad(); admSec("staff");
+}
+async function admSetHome(pid) {
+  const dep = $("hd-" + pid).value; if (!dep) return admMsg("Choose a department first.", true);
+  const r = await sb.rpc("set_home_department", { p_profile: pid, p_dept: dep });
+  if (r.error) return admMsg(r.error.message, true);
+  admMsg(r.data); await admLoad(); admSec("staff");
+}
+async function admDelStaff(pid) {
+  if (!confirm("Delete this lecturer account? Their courses become Unconfirmed. This cannot be undone.")) return;
+  const r = await sb.rpc("delete_staff_account", { p_profile: pid });
+  if (r.error) return admMsg(r.error.message, true);
+  admMsg(r.data); await admLoad(); admSec("staff");
+}
+async function admAppoint() {
+  const role = $("ap-r").value, dep = role === "hod" ? $("ap-dep").value : null;
+  const r = await sb.rpc("appoint_leader", { p_login: $("ap-l").value, p_role: role, p_school: $("ap-s").value, p_dept: dep });
+  if (r.error) return admMsg(r.error.message, true);
+  admMsg(r.data); await admLoad(); admSec("staff");
+}
+async function admAddSession() { const r = await sb.rpc("add_academic_session", { p_label: $("ns-s").value }); if (r.error) return admMsg(r.error.message, true); admMsg("Session added."); await admLoad(); admSec("set"); }
+
+/* ---------- Start ---------- */
 async function approveAny(id) {
   const { error } = await sb.rpc("approve_student", { p_student: id });
   flashMsg(error ? error.message : "Student approved. They can now see their courses.");
