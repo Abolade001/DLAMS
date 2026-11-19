@@ -839,6 +839,7 @@ function ctlHtml(s) {
   if (!isMain()) return `<p class="muted">Only the HOC/CG runs the QR code.</p>`;
   if (st === "inactive") return `<p class="muted">Get the lecturer's approval in person, then activate the QR.</p>
     <label for="m${id}">Minutes the QR stays open</label><input id="m${id}" type="number" min="1" max="240" value="15">
+    <label for="rad${id}">Classroom radius in metres (300 is safer for a large hall)</label><input id="rad${id}" type="number" min="20" max="1000" value="300">
     <div class="actions"><button class="primary" onclick="activate('${id}')">Activate QR</button><button onclick="cancelSession('${id}')">Cancel session</button></div>`;
   if (st === "active") return `<div class="qr">${qrImg(s.qr_token)}</div>
     <p>Time left: <strong id="t${id}"></strong></p><p class="muted">Screenshots are not allowed. Students scan this with their phone camera.</p>
@@ -910,7 +911,7 @@ async function markTicked(sid) {
 }
 async function activate(id) {
   try { const pos = await getPos();
-    await run("activate_session", { p_session: id, p_minutes: +$("m" + id).value, p_lat: pos.latitude, p_lng: pos.longitude, p_radius: 150 }); }
+    await run("activate_session", { p_session: id, p_minutes: +$("m" + id).value, p_lat: pos.latitude, p_lng: pos.longitude, p_radius: +($("rad" + id) ? $("rad" + id).value : 300) || 300 }); }
   catch (e) { gmsg(false, e.message); }
 }
 async function createSession() {
@@ -1402,7 +1403,7 @@ async function loadOversight() {
     ${hods.length ? `<p class="muted">HOD: ${hods.map(h => esc(h.full_name) + " (" + esc(h.dept_name || "") + ")").join(", ")}</p>` : ""}
     <h2>Lecturers and their courses</h2>
     ${depts.length ? depts.map(d => `<details class="dd"><summary>${esc(d)}</summary>
-        ${byDept[d] ? "" : `<p class="muted" style="margin-left:14px">No courses have been added yet.</p>`}${Object.values(byDept[d] || {}).sort((a, b) => cmpNo(a.login, b.login)).map(L => `<div style="margin:8px 0 8px 14px"><strong>${esc(L.name)}</strong> <span class="muted">${esc(L.login)}</span> <button class="danger" onclick="deleteStaff('${L.id}')">Delete</button><br>${L.courses.length ? L.courses.map(c => esc(c)).join("<br>") : "<span class='muted'>No courses this semester</span>"}</div>`).join("")}
+        ${byDept[d] ? "" : `<p class="muted" style="margin-left:14px">No courses have been added yet.</p>`}${Object.values(byDept[d] || {}).sort((a, b) => cmpNo(a.login, b.login)).map(L => `<div style="margin:8px 0 8px 14px"><strong>${esc(L.name)}</strong> <span class="muted">${esc(L.login)}</span> <button onclick="resetStaff('${L.id}')">Reset password</button> <button class="danger" onclick="deleteStaff('${L.id}')">Delete</button><br>${L.courses.length ? L.courses.map(c => esc(c)).join("<br>") : "<span class='muted'>No courses this semester</span>"}</div>`).join("")}
       </details>`).join("") : `<p class="panel">No lecturers have been given courses yet.</p>`}`;
   loadAppointForm(lect);
   loadStaffTools();
@@ -1618,6 +1619,12 @@ async function saveOwnCourse() {
   if (!error) loadStaffCourses();
 }
 
+async function resetStaff(id) {
+  if (!confirm("Reset this person's password to the temporary password 12345678?")) return;
+  const { data, error } = await sb.rpc("reset_staff_password", { p_profile: id });
+  flashMsg(error ? error.message : data);
+}
+
 /* Delete a lecturer account (for example a Sub-dean or HOD who is not teaching this semester) */
 async function deleteStaff(id) {
   if (!confirm("Delete this lecturer account? Their courses become Unconfirmed. This cannot be undone.")) return;
@@ -1780,12 +1787,27 @@ function admStaff(m) {
 }
 function admStaffList() {
   const A = window._adm, q = ($("sq") ? $("sq").value : "").trim().toLowerCase();
-  const rows = A.staff.filter(x => !q || x.full_name.toLowerCase().includes(q) || x.login_id.toLowerCase().includes(q)).sort((a, b) => cmpNo(a.login_id, b.login_id));
-  $("sl-list").innerHTML = rows.length ? `<div class="wrap"><table><tr><th>Name</th><th>DLAMS ID</th><th>School</th><th>Department</th><th></th></tr>${rows.map(x =>
-    `<tr><td>${esc(x.full_name)}</td><td>${esc(x.login_id)}</td><td>${esc(x.school_name || "")}</td><td>${esc(x.dept_name || "")}</td>
-     <td style="white-space:nowrap"><select id="hd-${x.profile_id}"><option value="">Move to department...</option>${A.depts.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join("")}</select>
-     <button onclick="admSetHome('${x.profile_id}')">Set</button> <button class="danger" onclick="admDelStaff('${x.profile_id}')">Delete</button></td></tr>`).join("")}</table></div>`
+  const rows = A.staff.filter(x => !q || x.full_name.toLowerCase().includes(q) || x.login_id.toLowerCase().includes(q));
+  const tree = {};
+  rows.forEach(x => { const sc = x.school_name || "No school yet", dp = x.dept_name || "No department yet";
+    tree[sc] = tree[sc] || {}; (tree[sc][dp] = tree[sc][dp] || []).push(x); });
+  const line = x => `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 0;border-top:1px solid var(--line)">
+    <span style="min-width:200px"><strong>${esc(x.full_name)}</strong> <span class="muted">${esc(x.login_id)}</span></span>
+    <select id="hd-${x.profile_id}"><option value="">Move to department...</option>${A.depts.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join("")}</select>
+    <button onclick="admSetHome('${x.profile_id}')">Set</button>
+    <button onclick="admResetPw('${x.profile_id}')">Reset password</button>
+    <button class="danger" onclick="admDelStaff('${x.profile_id}')">Delete</button></div>`;
+  const keys = o => Object.keys(o).sort();
+  $("sl-list").innerHTML = keys(tree).length ? keys(tree).map(sc =>
+    `<details class="dd"><summary>${esc(sc)} <span class="muted">${Object.values(tree[sc]).reduce((n, a) => n + a.length, 0)} lecturer(s)</span></summary>
+     ${keys(tree[sc]).map(dp => `<details class="dd" style="margin-left:14px"><summary>${esc(dp)} <span class="muted">${tree[sc][dp].length}</span></summary>
+       ${tree[sc][dp].sort((a, b) => cmpNo(a.login_id, b.login_id)).map(line).join("")}</details>`).join("")}</details>`).join("")
     : `<p class="muted">No lecturers found.</p>`;
+}
+async function admResetPw(pid) {
+  if (!confirm("Reset this person's password to the temporary password 12345678? They must choose a new one at next sign-in.")) return;
+  const r = await sb.rpc("reset_staff_password", { p_profile: pid });
+  admMsg(r.error ? r.error.message : r.data, !!r.error);
 }
 async function admCourses(m) {
   const A = window._adm;
